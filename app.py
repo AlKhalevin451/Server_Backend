@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request
 from database import init_db, close_db
 from asgiref.wsgi import WsgiToAsgi
+import os
 
 # Подключаем другие файлы
 import auth
@@ -166,4 +167,5 @@ def device_notifications(device_id):
 
 # Запуск
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
