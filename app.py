@@ -25,7 +25,7 @@ asgi_app = WsgiToAsgi(app)
 def shutdown_session(exception=None):
     close_db()
 
-# Существующие маршруты
+# ===== Существующие маршруты (без изменений) =====
 @app.route('/test/assign', methods=['POST'])
 def test_assign():
     data = request.get_json()
@@ -55,6 +55,7 @@ def home():
             "Устройства (ESP32)": {
                 "send_data": "POST /api/device/data",
                 "get_scenario": "GET /api/device/<device_id>/scenario",
+                # ДОБАВЛЕНО:
                 "get_device_data": "GET /api/device/<device_id>/data",
                 "toggle_pump": "POST /api/device/<device_id>/pump/toggle",
                 "pump_status": "GET /api/device/<device_id>/pump/status"
@@ -66,7 +67,7 @@ def home():
         }
     }), 200
 
-# Аутентификация
+# ===== Аутентификация =====
 @app.route('/auth/register', methods=['POST'])
 def register():
     return auth.register_user()
@@ -75,7 +76,7 @@ def register():
 def login():
     return auth.login_user()
 
-# Сценарии
+# ===== Сценарии =====
 @app.route('/api/scenarios', methods=['GET'])
 def get_scenarios():
     return scenarios.get_all_scenarios()
@@ -102,7 +103,7 @@ def debug_all_scenarios():
         "assignments": [dict(row) for row in all_assignments]
     })
 
-# Устройства (ESP32)
+# ===== УСТРОЙСТВА (ESP32) =====
 @app.route('/api/device/data', methods=['POST'])
 def device_data():
     """ESP32 отправляет данные датчиков."""
@@ -113,7 +114,7 @@ def device_scenario(device_id):
     """ESP32 запрашивает сценарий."""
     return devices.get_device_scenario(device_id)
 
-# Маршруты для ANDROID
+# ----- НОВЫЕ МАРШРУТЫ ДЛЯ ANDROID -----
 @app.route('/api/device/<device_id>/data', methods=['GET'])
 def get_device_data(device_id):
     """Android получает последние данные датчиков."""
@@ -129,7 +130,7 @@ def pump_status(device_id):
     """Android запрашивает состояние насоса."""
     return devices.get_pump_status(device_id)
 
-# Системные маршруты
+# ===== Системные маршруты =====
 @app.route('/api/health', methods=['GET'])
 def health_check():
     return jsonify({"status": "healthy", "database": "connected"}), 200
@@ -142,7 +143,25 @@ def server_info():
         "api_version": "v1"
     }), 200
 
-# Обработчики ошибок
+
+@app.route('/api/device/latest', methods=['GET'])
+def get_latest_data():
+    device_id = request.args.get('device_id')
+    if not device_id:
+        return jsonify({"error": "device_id required"}), 400
+
+    # Получаем последние данные из хранилища (например, из переменной latest_sensor_data)
+    from devices import latest_sensor_data
+    data = latest_sensor_data.get(device_id)
+
+    if not data:
+        return jsonify({"error": "No data for this device"}), 404
+
+    return jsonify(data), 200
+
+
+
+# ===== Обработчики ошибок =====
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({"success": False, "error": "Ресурс не найден"}), 404
@@ -159,11 +178,10 @@ def unauthorized(error):
 def internal_error(error):
     return jsonify({"success": False, "error": "Внутренняя ошибка сервера"}), 500
 
-'''@app.route('/api/device/<device_id>/notifications', methods=['GET'])
+@app.route('/api/device/<device_id>/notifications', methods=['GET'])
 def device_notifications(device_id):
     return devices.get_notifications(device_id)
-    '''
 
-# Запуск
+# ===== Запуск =====
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
