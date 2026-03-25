@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="Black">
+<<<<<<< HEAD
     <option name="sdkName" value="Python 3.10 (plantcare-server)" />
   </component>
   <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.10 (plantcare-server)" project-jdk-type="Python SDK" />
+=======
+    <option name="sdkName" value="Python 3.12 (Back_Serv)" />
+  </component>
+>>>>>>> 8117b917c1557e15f14883016013ba482e8bf59f
 </project>
