@@ -1,6 +1,14 @@
 <component name="InspectionProjectProfileManager">
   <profile version="1.0">
     <option name="myName" value="Project Default" />
+<<<<<<< HEAD
+    <inspection_tool class="MicroPythonRequirements" enabled="true" level="TYPO" enabled_by_default="true" />
+    <inspection_tool class="PyUnresolvedReferencesInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredIdentifiers">
+        <list>
+          <option value="list.__getitem__" />
+        </list>
+=======
     <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
       <option name="ignoredPackages">
         <value>
@@ -13,6 +21,7 @@
             <item index="5" class="java.lang.String" itemvalue="flake8" />
           </list>
         </value>
+>>>>>>> 8117b917c1557e15f14883016013ba482e8bf59f
       </option>
     </inspection_tool>
   </profile>
