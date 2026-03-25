@@ -50,10 +50,6 @@ def create_scenario():
     Создать новый сценарий для пользователя и автоматически привязать его.
     """
     data = request.get_json()
-    # 🔍 ОТЛАДКА: выводим полученные данные
-    print("=== DEBUG: create_scenario received data ===")
-    print(data)
-    print("============================================")
     if not data:
         return jsonify({"success": False, "message": "Отсутствуют данные"}), 400
 
@@ -284,8 +280,8 @@ def get_user_scenarios():
                 s.original_scenario_id,
                 orig.nam as original_scenario_name
             FROM user_scenarios us
-            JOIN scenarios s ON us.scenario_id = s.iid
-            LEFT JOIN scenarios orig ON s.original_scenario_id = orig.iid
+            INNER JOIN scenarios AS s ON us.scenario_id = s.iid
+            LEFT OUTER JOIN scenarios AS orig ON s.original_scenario_id = orig.iid
             WHERE us.user_id = ?
             ORDER BY us.created_at DESC
         """, [user['iid']])

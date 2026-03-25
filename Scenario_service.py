@@ -53,7 +53,7 @@ class ScenarioService:
                 s.created_by, s.created_at,
                 us.created_at as assigned_at
             FROM scenarios s
-            INNER JOIN user_scenarios us ON s.iid = us.scenario_id
+            INNER JOIN user_scenarios AS us ON s.iid = us.scenario_id
             WHERE us.device_id = ? AND us.is_active = 1
             ORDER BY us.created_at DESC
             LIMIT 1

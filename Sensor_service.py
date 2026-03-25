@@ -70,7 +70,7 @@ class SensorService:
                 s.max_light_lux,
                 s.created_by
             FROM scenarios s
-            INNER JOIN user_scenarios us ON s.iid = us.scenario_id
+            INNER JOIN user_scenarios AS us ON s.iid = us.scenario_id
             WHERE us.device_id = ? AND us.is_active = 1
             ORDER BY us.created_at DESC
             LIMIT 1
@@ -100,15 +100,15 @@ class SensorService:
 
     # 12. Приватный метод для сохранения уведомлений (исправлен)
     def _save_notification(self, device_id: str, message: str, type: str):
-        print(f"🔥 _save_notification ВЫЗВАН с параметрами: {device_id}, {message}, {type}")
+        print(f"_save_notification ВЫЗВАН с параметрами: {device_id}, {message}, {type}")
         try:
             execute_db('''
                 INSERT INTO notifications (device_id, message, type)
                 VALUES (?, ?, ?)
             ''', [device_id, message, type])
-            print("✅ Уведомление успешно сохранено в БД")
+            print("Уведомление успешно сохранено в БД")
         except Exception as e:
-            print(f"❌ Ошибка при сохранении уведомления: {e}")
+            print(f"Ошибка при сохранении уведомления: {e}")
 
     # 13. Приватные методы управления целью насоса
     def _get_pump_target(self, device_id: str) -> Optional[bool]:

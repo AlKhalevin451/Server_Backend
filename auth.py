@@ -109,6 +109,7 @@ def register_user():
     except Exception as e:
         return jsonify({"success": False, "message": f"Ошибка сервера: {str(e)}"}), 500
 
+
 def login_user():
     """
     Вход пользователя.

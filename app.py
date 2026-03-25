@@ -25,7 +25,7 @@ asgi_app = WsgiToAsgi(app)
 def shutdown_session(exception=None):
     close_db()
 
-# Существующие маршруты
+# Существующие маршруты d cthdtht
 @app.route('/test/assign', methods=['POST'])
 def test_assign():
     data = request.get_json()

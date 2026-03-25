@@ -122,8 +122,6 @@ def get_device_scenario(device_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-# ========== НОВЫЕ ЭНДПОИНТЫ ДЛЯ ANDROID ==========
-
 def get_device_data(device_id):
     """
     GET /api/device/<device_id>/data
