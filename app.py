@@ -1,10 +1,7 @@
 from flask import Flask, jsonify, request
 from database import init_db, close_db
 from asgiref.wsgi import WsgiToAsgi
-<<<<<<< HEAD
 import os
-=======
->>>>>>> 8117b917c1557e15f14883016013ba482e8bf59f
 
 # Подключаем другие файлы
 import auth
@@ -29,11 +26,8 @@ asgi_app = WsgiToAsgi(app)
 def shutdown_session(exception=None):
     close_db()
 
-<<<<<<< HEAD
 # ===== Существующие маршруты (без изменений) =====
-=======
 # Существующие маршруты
->>>>>>> 8117b917c1557e15f14883016013ba482e8bf59f
 @app.route('/test/assign', methods=['POST'])
 def test_assign():
     data = request.get_json()
@@ -63,10 +57,7 @@ def home():
             "Устройства (ESP32)": {
                 "send_data": "POST /api/device/data",
                 "get_scenario": "GET /api/device/<device_id>/scenario",
-<<<<<<< HEAD
                 # ДОБАВЛЕНО:
-=======
->>>>>>> 8117b917c1557e15f14883016013ba482e8bf59f
                 "get_device_data": "GET /api/device/<device_id>/data",
                 "toggle_pump": "POST /api/device/<device_id>/pump/toggle",
                 "pump_status": "GET /api/device/<device_id>/pump/status"
@@ -78,11 +69,9 @@ def home():
         }
     }), 200
 
-<<<<<<< HEAD
+
 # ===== Аутентификация =====
-=======
 # Аутентификация
->>>>>>> 8117b917c1557e15f14883016013ba482e8bf59f
 @app.route('/auth/register', methods=['POST'])
 def register():
     return auth.register_user()
@@ -91,11 +80,9 @@ def register():
 def login():
     return auth.login_user()
 
-<<<<<<< HEAD
 # ===== Сценарии =====
-=======
+
 # Сценарии
->>>>>>> 8117b917c1557e15f14883016013ba482e8bf59f
 @app.route('/api/scenarios', methods=['GET'])
 def get_scenarios():
     return scenarios.get_all_scenarios()
@@ -122,11 +109,9 @@ def debug_all_scenarios():
         "assignments": [dict(row) for row in all_assignments]
     })
 
-<<<<<<< HEAD
 # ===== УСТРОЙСТВА (ESP32) =====
-=======
+
 # Устройства (ESP32)
->>>>>>> 8117b917c1557e15f14883016013ba482e8bf59f
 @app.route('/api/device/data', methods=['POST'])
 def device_data():
     """ESP32 отправляет данные датчиков."""
@@ -137,11 +122,8 @@ def device_scenario(device_id):
     """ESP32 запрашивает сценарий."""
     return devices.get_device_scenario(device_id)
 
-<<<<<<< HEAD
 # ----- НОВЫЕ МАРШРУТЫ ДЛЯ ANDROID -----
-=======
 # Маршруты для ANDROID
->>>>>>> 8117b917c1557e15f14883016013ba482e8bf59f
 @app.route('/api/device/<device_id>/data', methods=['GET'])
 def get_device_data(device_id):
     """Android получает последние данные датчиков."""
@@ -157,11 +139,8 @@ def pump_status(device_id):
     """Android запрашивает состояние насоса."""
     return devices.get_pump_status(device_id)
 
-<<<<<<< HEAD
 # ===== Системные маршруты =====
-=======
 # Системные маршруты
->>>>>>> 8117b917c1557e15f14883016013ba482e8bf59f
 @app.route('/api/health', methods=['GET'])
 def health_check():
     return jsonify({"status": "healthy", "database": "connected"}), 200
@@ -174,7 +153,6 @@ def server_info():
         "api_version": "v1"
     }), 200
 
-<<<<<<< HEAD
 
 @app.route('/api/device/latest', methods=['GET'])
 def get_latest_data():
@@ -194,9 +172,7 @@ def get_latest_data():
 
 
 # ===== Обработчики ошибок =====
-=======
 # Обработчики ошибок
->>>>>>> 8117b917c1557e15f14883016013ba482e8bf59f
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({"success": False, "error": "Ресурс не найден"}), 404
@@ -213,7 +189,6 @@ def unauthorized(error):
 def internal_error(error):
     return jsonify({"success": False, "error": "Внутренняя ошибка сервера"}), 500
 
-<<<<<<< HEAD
 @app.route('/api/device/<device_id>/notifications', methods=['GET'])
 def device_notifications(device_id):
     return devices.get_notifications(device_id)
@@ -222,7 +197,7 @@ def device_notifications(device_id):
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
-=======
+
 '''@app.route('/api/device/<device_id>/notifications', methods=['GET'])
 def device_notifications(device_id):
     return devices.get_notifications(device_id)
@@ -230,5 +205,6 @@ def device_notifications(device_id):
 
 # Запуск
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
->>>>>>> 8117b917c1557e15f14883016013ba482e8bf59f
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
+
