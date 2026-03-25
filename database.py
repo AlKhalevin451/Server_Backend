@@ -1,9 +1,5 @@
 # database.py - Модуль для работы с базой данных SQLite
-<<<<<<< HEAD
-# Она отвечает за создание таблиц и управление соединениями
-=======
 # Он отвечает за создание таблиц и управление соединениями
->>>>>>> 8117b917c1557e15f14883016013ba482e8bf59f
 # Используемые библиотеки и подключения
 import sqlite3 # Для работы с SQLite
 from flask import g # Модуль g нужен для хранения данных в течение одного запроса
@@ -68,11 +64,7 @@ def init_db(): # Инициализация базы данных - создае
             UNIQUE(user_id, scenario_id, device_id)
         )
     """)
-<<<<<<< HEAD
-
-=======
     # 4. Таблица показания счётчиков для некоторого контроллера
->>>>>>> 8117b917c1557e15f14883016013ba482e8bf59f
     execute_db('''
            CREATE TABLE IF NOT EXISTS sensor_readings (
                iid INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,11 +77,7 @@ def init_db(): # Инициализация базы данных - создае
                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
            )
        ''')
-<<<<<<< HEAD
-
-=======
     # 5. Таблица создания уведомлений
->>>>>>> 8117b917c1557e15f14883016013ba482e8bf59f
     execute_db('''
             CREATE TABLE IF NOT EXISTS notifications (
                 iid INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -100,10 +88,6 @@ def init_db(): # Инициализация базы данных - создае
                 is_read BOOLEAN DEFAULT 0
             )
         ''')
-<<<<<<< HEAD
-
-=======
->>>>>>> 8117b917c1557e15f14883016013ba482e8bf59f
     # Создаем индексы для ускорения запросов
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_scenarios_user ON user_scenarios(user_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_scenarios_scenario ON user_scenarios(scenario_id)")

@@ -19,16 +19,10 @@ class Config: # Базовая конфигурация
     def make_base_scenarios(self, DATABASE):
         conn = sqlite3.connect(DATABASE)
         cursor = conn.cursor()
-
-<<<<<<< HEAD
         # ИЗМЕНЕНИЕ: Проверяем только публичные сценарии
-=======
         # Проверяем только публичные сценарии
->>>>>>> 8117b917c1557e15f14883016013ba482e8bf59f
         cursor.execute("SELECT COUNT(*) FROM scenarios WHERE created_by IS NULL")
         if cursor.fetchone()[0] == 0:  # ← если публичных сценариев = 0
-            print("Создаю базовые сценарии...")
-
             default_scenarios = [
                 ("Тропики", 10.0, 18.0, 60.0, 95.0, 60.0, 90.0, 2300.0, 2700.0, None),
                 ("Зелёный оазис", 18.0, 24.0, 60.0, 95.0, 60.0, 90.0, 3000.0, 3900.0, None),
@@ -67,11 +61,7 @@ class Config: # Базовая конфигурация
         conn.commit()
         conn.close()
 
-<<<<<<< HEAD
-class DevelopmentConfig(Config): #Конфигурация для разработки
-=======
 class DevelopmentConfig(Config): # Конфигурация для разработки
->>>>>>> 8117b917c1557e15f14883016013ba482e8bf59f
     DEBUG = True
 
 
