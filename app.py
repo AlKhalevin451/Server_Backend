@@ -3,28 +3,23 @@ from database import init_db, close_db
 from asgiref.wsgi import WsgiToAsgi
 import os
 
-# Импортируем MQTT
-from mqtt_service import init_mqtt
-
 # Подключаем другие файлы
 import auth
 import scenarios
-import devices
+import devices   # наш обновлённый модуль
 
-# Создаем Flask приложение
 app = Flask(__name__)
 
-# Инициализация MQTT (ДОБАВИТЬ ЭТУ СТРОКУ)
-mqtt = init_mqtt()
+# Инициализация MQTT (добавить эти строки)
+from mqtt_service import init_mqtt
+mqtt = init_mqtt(app)           # передаём app
 
-# Инициализация БД при старте приложения
-with app.app_context():
-    init_db()
-    from config import Config
-    config = Config()
-    config.make_base_scenarios('plantcare.db')
-
-asgi_app = WsgiToAsgi(app)
+if mqtt:
+    import devices
+    devices.set_mqtt_service(mqtt)
+    print("✅ MQTT сервис инициализирован")
+else:
+    print("⚠️ MQTT сервис не инициализирован")
 
 # Закрытие соединения после запроса
 @app.teardown_appcontext

@@ -7,8 +7,13 @@ from datetime import datetime
 import requests
 import json
 
-# Импортируем MQTT сервис (будет инициализирован в app.py)
+# Глобальная переменная для MQTT сервиса
 mqtt_service = None
+
+def set_mqtt_service(mqtt):
+    global mqtt_service
+    mqtt_service = mqtt
+    print("✅ MQTT сервис установлен в devices")
 
 def set_mqtt_service(mqtt):
     """Установка глобального MQTT сервиса"""
