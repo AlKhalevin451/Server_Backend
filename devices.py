@@ -1,25 +1,36 @@
 """
 devices.py - Модуль для работы с ESP32 устройствами
+Поддерживает MQTT и HTTP (обратная совместимость)
 """
 from flask import request, jsonify
 from datetime import datetime
-import requests  # для отправки команд на ESP
+import requests
+import json
+
+# Импортируем MQTT сервис (будет инициализирован в app.py)
+mqtt_service = None
+
+def set_mqtt_service(mqtt):
+    """Установка глобального MQTT сервиса"""
+    global mqtt_service
+    mqtt_service = mqtt
 
 # Константы
 ESP32_API_KEY = "esp32_secret_key_123"
 
-# Инициализация сервисов (ваши существующие)
+# Инициализация сервисов
 from Sensor_service import SensorService
 from Scenario_service import ScenarioService
 
 sensor_service = SensorService()
 scenario_service = ScenarioService()
 
-# ------------------- Хранилище данных от ESP32 -------------------
-# В реальном проекте используйте базу данных, здесь для простоты - словари
+# Хранилище данных
 latest_sensor_data = {}      # key: device_id, value: последние показания + pump
 device_ip_map = {}           # key: device_id, value: последний известный IP ESP32
 
+# -----------------------------------------------------------------
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 # -----------------------------------------------------------------
 
 def verify_esp32_key():
@@ -31,10 +42,32 @@ def verify_esp32_key():
         return False, "Неверный API ключ"
     return True, ""
 
+def send_mqtt_command(device_id, command):
+    """Отправка команды через MQTT"""
+    if not mqtt_service:
+        print("MQTT сервис не инициализирован")
+        return False, "MQTT сервис недоступен"
 
-# ========== ЭНДПОИНТЫ ДЛЯ ESP32 ==========
+    try:
+        result = mqtt_service.send_command(device_id, command)
+        if result.get("success"):
+            return True, result.get("command_id")
+        else:
+            return False, result.get("error", "Ошибка отправки")
+    except Exception as e:
+        print(f"Ошибка отправки MQTT команды: {e}")
+        return False, str(e)
+
+# -----------------------------------------------------------------
+# ЭНДПОИНТЫ ДЛЯ ESP32 (HTTP - старый способ)
+# -----------------------------------------------------------------
 
 def process_sensor_data():
+    """
+    POST /api/device/data
+    ESP32 отправляет данные датчиков через HTTP.
+    Используется как fallback, если MQTT недоступен.
+    """
     is_valid, error = verify_esp32_key()
     if not is_valid:
         return jsonify({"success": False, "error": error}), 401
@@ -60,10 +93,10 @@ def process_sensor_data():
         'pump': sensors.get('pump', False)
     }
 
-    print(f"[{datetime.now()}] Данные от {device_id} с IP {client_ip}: {latest_sensor_data[device_id]}")
+    print(f"[{datetime.now()}] HTTP данные от {device_id} с IP {client_ip}: {latest_sensor_data[device_id]}")
 
     try:
-        # 🔧 Преобразование во flat_data
+        # Преобразование во flat_data для SensorService
         flat_data = {
             "device_id": device_id,
             "temp": sensors.get('temp'),
@@ -74,34 +107,19 @@ def process_sensor_data():
         }
         result = sensor_service.process_sensor_data(flat_data)
 
-        # Отладка: выводим результат сервиса
-        print("Результат сервиса:", result)
+        print("Результат обработки:", result)
 
-        # ------------------- ОБРАБОТКА КОМАНД -------------------
-        # Если сервис вернул команды, выполняем их
+        # Отправляем команды через MQTT (если доступен)
         for cmd in result.get('commands', []):
-            if cmd['command'] == 'pump_on':
-                esp_ip = device_ip_map.get(device_id)
-                if esp_ip:
-                    try:
-                        # Отправляем команду переключения насоса
-                        resp = requests.post(f"http://{esp_ip}/togglePump", json={}, timeout=2)
-                        if resp.status_code == 200:
-                            new_state = resp.json().get('pump')
-                            # Обновляем сохранённое состояние
-                            if device_id in latest_sensor_data:
-                                latest_sensor_data[device_id]['pump'] = new_state
-                            print(f"Автоматическое включение насоса на {esp_ip}, новое состояние: {new_state}")
-                        else:
-                            print(f"Ошибка при отправке pump_on: {resp.status_code}")
-                    except Exception as e:
-                        print(f"Исключение при отправке pump_on: {e}")
+            if cmd['command'] in ['pump_on', 'pump_off', 'toggle_pump']:
+                success, msg = send_mqtt_command(device_id, cmd['command'])
+                if not success:
+                    print(f"Не удалось отправить команду {cmd['command']}: {msg}")
                 else:
-                    print(f"IP для устройства {device_id} не найден в device_ip_map")
-            # Здесь можно добавить обработку других команд (например, alert)
-        # ---------------------------------------------------------
+                    print(f"Команда {cmd['command']} отправлена через MQTT")
 
         return jsonify(result), 200
+
     except ValueError as e:
         return jsonify({"success": False, "error": str(e)}), 400
     except Exception as e:
@@ -110,7 +128,10 @@ def process_sensor_data():
 
 
 def get_device_scenario(device_id):
-    """Возвращает сценарий для устройства (вызывается ESP32)."""
+    """
+    GET /api/device/<device_id>/scenario
+    ESP32 запрашивает сценарий.
+    """
     is_valid, error = verify_esp32_key()
     if not is_valid:
         return jsonify({"success": False, "error": error}), 401
@@ -122,10 +143,14 @@ def get_device_scenario(device_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+# -----------------------------------------------------------------
+# ЭНДПОИНТЫ ДЛЯ ANDROID (HTTP)
+# -----------------------------------------------------------------
+
 def get_device_data(device_id):
     """
     GET /api/device/<device_id>/data
-    Возвращает последние данные датчиков для указанного устройства.
+    Android получает последние данные датчиков.
     """
     data = latest_sensor_data.get(device_id)
     if not data:
@@ -136,21 +161,29 @@ def get_device_data(device_id):
 def toggle_pump(device_id):
     """
     POST /api/device/<device_id>/pump/toggle
-    Отправляет команду переключения насоса на ESP32.
+    Android переключает насос.
+    Отправляет команду через MQTT (основной способ) или HTTP (fallback).
     """
-    # Проверяем, есть ли IP для этого устройства
+    # Пытаемся отправить через MQTT
+    if mqtt_service:
+        success, result = send_mqtt_command(device_id, "toggle_pump")
+        if success:
+            # Обновляем локальное состояние (предполагаем, что переключится)
+            if device_id in latest_sensor_data:
+                current_state = latest_sensor_data[device_id].get('pump', False)
+                latest_sensor_data[device_id]['pump'] = not current_state
+            return jsonify({"success": True, "pump": latest_sensor_data[device_id]['pump']}), 200
+
+    # Fallback: если MQTT не работает, пытаемся через HTTP (старый способ)
     esp_ip = device_ip_map.get(device_id)
     if not esp_ip:
-        return jsonify({"error": "IP устройства неизвестен"}), 404
+        return jsonify({"error": "MQTT недоступен и IP устройства неизвестен"}), 404
 
-    # Отправляем POST-запрос на ESP
     try:
         url = f"http://{esp_ip}/togglePump"
-        # ESP ожидает POST с пустым телом (можно {} )
         resp = requests.post(url, json={}, timeout=5)
         if resp.status_code == 200:
             new_state = resp.json().get('pump')
-            # Обновляем сохранённое состояние
             if device_id in latest_sensor_data:
                 latest_sensor_data[device_id]['pump'] = new_state
             return jsonify({"success": True, "pump": new_state}), 200
@@ -160,12 +193,159 @@ def toggle_pump(device_id):
         return jsonify({"error": f"Ошибка соединения с ESP: {str(e)}"}), 500
 
 
+def pump_on(device_id):
+    """
+    POST /api/device/<device_id>/pump/on
+    Android включает насос.
+    """
+    # Пытаемся отправить через MQTT
+    if mqtt_service:
+        success, result = send_mqtt_command(device_id, "pump_on")
+        if success:
+            if device_id in latest_sensor_data:
+                latest_sensor_data[device_id]['pump'] = True
+            return jsonify({"success": True, "pump": True}), 200
+
+    # Fallback через HTTP
+    esp_ip = device_ip_map.get(device_id)
+    if not esp_ip:
+        return jsonify({"error": "MQTT недоступен и IP устройства неизвестен"}), 404
+
+    try:
+        url = f"http://{esp_ip}/pumpOn"
+        resp = requests.post(url, json={}, timeout=5)
+        if resp.status_code == 200:
+            if device_id in latest_sensor_data:
+                latest_sensor_data[device_id]['pump'] = True
+            return jsonify({"success": True, "pump": True}), 200
+        else:
+            return jsonify({"error": f"ESP вернул код {resp.status_code}"}), 502
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": f"Ошибка соединения с ESP: {str(e)}"}), 500
+
+
+def pump_off(device_id):
+    """
+    POST /api/device/<device_id>/pump/off
+    Android выключает насос.
+    """
+    # Пытаемся отправить через MQTT
+    if mqtt_service:
+        success, result = send_mqtt_command(device_id, "pump_off")
+        if success:
+            if device_id in latest_sensor_data:
+                latest_sensor_data[device_id]['pump'] = False
+            return jsonify({"success": True, "pump": False}), 200
+
+    # Fallback через HTTP
+    esp_ip = device_ip_map.get(device_id)
+    if not esp_ip:
+        return jsonify({"error": "MQTT недоступен и IP устройства неизвестен"}), 404
+
+    try:
+        url = f"http://{esp_ip}/pumpOff"
+        resp = requests.post(url, json={}, timeout=5)
+        if resp.status_code == 200:
+            if device_id in latest_sensor_data:
+                latest_sensor_data[device_id]['pump'] = False
+            return jsonify({"success": True, "pump": False}), 200
+        else:
+            return jsonify({"error": f"ESP вернул код {resp.status_code}"}), 502
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": f"Ошибка соединения с ESP: {str(e)}"}), 500
+
+
 def get_pump_status(device_id):
     """
     GET /api/device/<device_id>/pump/status
-    Возвращает текущее состояние насоса (из последних данных).
+    Android запрашивает состояние насоса.
     """
     data = latest_sensor_data.get(device_id)
     if not data or 'pump' not in data:
         return jsonify({"error": "Состояние насоса неизвестно"}), 404
     return jsonify({"pump": data['pump']}), 200
+
+
+def get_device_info(device_id):
+    """
+    GET /api/device/<device_id>/info
+    Получает информацию об устройстве.
+    """
+    data = latest_sensor_data.get(device_id)
+    if not data:
+        return jsonify({"error": "Устройство не найдено"}), 404
+
+    return jsonify({
+        "device_id": device_id,
+        "last_seen": data.get('timestamp'),
+        "ip": device_ip_map.get(device_id),
+        "pump_state": data.get('pump', False),
+        "has_data": True
+    }), 200
+
+
+# -----------------------------------------------------------------
+# MQTT ОБРАБОТЧИКИ (вызываются из mqtt_service.py)
+# -----------------------------------------------------------------
+
+def process_mqtt_sensor_data(device_id, data):
+    """
+    Обработка данных от датчиков, полученных через MQTT.
+    Вызывается из mqtt_service при получении сообщения.
+    """
+    try:
+        # Сохраняем данные
+        latest_sensor_data[device_id] = {
+            'timestamp': datetime.utcnow().isoformat(),
+            'light': data.get('sensors', {}).get('light'),
+            'soil': data.get('sensors', {}).get('soil'),
+            'temp': data.get('sensors', {}).get('temp'),
+            'humidity': data.get('sensors', {}).get('humidity'),
+            'pump': data.get('sensors', {}).get('pump', False)
+        }
+
+        print(f"[{datetime.now()}] MQTT данные от {device_id}: {latest_sensor_data[device_id]}")
+
+        # Преобразование для SensorService
+        flat_data = {
+            "device_id": device_id,
+            "temp": data.get('sensors', {}).get('temp'),
+            "soil_moisture": data.get('sensors', {}).get('soil'),
+            "light": data.get('sensors', {}).get('light'),
+            "humidity": data.get('sensors', {}).get('humidity'),
+            "pump_state": data.get('sensors', {}).get('pump', False)
+        }
+
+        result = sensor_service.process_sensor_data(flat_data)
+        print(f"Результат обработки MQTT данных: {result}")
+
+        # Отправляем команды обратно
+        for cmd in result.get('commands', []):
+            if cmd['command'] in ['pump_on', 'pump_off', 'toggle_pump']:
+                success, msg = send_mqtt_command(device_id, cmd['command'])
+                if not success:
+                    print(f"Не удалось отправить команду {cmd['command']}: {msg}")
+
+        return result
+
+    except Exception as e:
+        print(f"Ошибка обработки MQTT данных: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def process_mqtt_device_status(device_id, data):
+    """
+    Обработка статуса устройства, полученного через MQTT.
+    """
+    try:
+        if 'pump_state' in data:
+            if device_id not in latest_sensor_data:
+                latest_sensor_data[device_id] = {}
+            latest_sensor_data[device_id]['pump'] = data['pump_state']
+            print(f"[{datetime.now()}] Статус насоса {device_id}: {data['pump_state']}")
+
+        if 'status' in data:
+            print(f"[{datetime.now()}] Устройство {device_id}: {data['status']}")
+
+    except Exception as e:
+        print(f"Ошибка обработки статуса устройства: {e}")
