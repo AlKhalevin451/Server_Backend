@@ -45,7 +45,7 @@ def queue_command(device_id, command, params=None):
         "timestamp": datetime.utcnow().isoformat()
     }
     command_queue[device_id].append(cmd)
-    print(f"[QUEUE] Добавлена команда {command} для {device_id}")
+    print(f"[QUEUE] Добавлена команда {command} для {device_id}. Всего в очереди: {len(command_queue[device_id])}")
     return True
 
 # ========== ЭНДПОИНТЫ ДЛЯ ESP32 ==========
@@ -95,13 +95,11 @@ def process_sensor_data():
         # Обработка команд от сервиса (автоматическое управление)
         for cmd in result.get('commands', []):
             if cmd['command'] == 'pump_on':
-                # Добавляем команду в очередь вместо прямого вызова
                 queue_command(device_id, "pump_on")
                 print(f"[AUTO] Добавлена команда pump_on для {device_id}")
             elif cmd['command'] == 'pump_off':
                 queue_command(device_id, "pump_off")
                 print(f"[AUTO] Добавлена команда pump_off для {device_id}")
-            # Здесь можно добавить обработку других команд
 
         return jsonify(result), 200
     except ValueError as e:
@@ -122,7 +120,7 @@ def get_device_command(device_id):
     # Получаем следующую команду из очереди
     if command_queue[device_id]:
         cmd = command_queue[device_id].pop(0)
-        print(f"[CMD] Отдаю команду {cmd['command']} устройству {device_id}")
+        print(f"[CMD] Отдаю команду {cmd['command']} устройству {device_id}. Осталось в очереди: {len(command_queue[device_id])}")
         return jsonify({
             "has_command": True,
             "command": cmd['command'],
@@ -145,7 +143,7 @@ def update_pump_state(device_id):
 
     data = request.get_json()
     pump_state = data.get('pump')
-    command = data.get('command')  # какая команда была выполнена
+    command = data.get('command')
     success = data.get('success', True)
 
     if device_id in latest_sensor_data:
@@ -154,7 +152,7 @@ def update_pump_state(device_id):
         latest_sensor_data[device_id]['command_success'] = success
         latest_sensor_data[device_id]['command_time'] = datetime.utcnow().isoformat()
 
-    print(f"[STATE] Устройство {device_id} обновило состояние насоса: {pump_state}, команда: {command}")
+    print(f"[STATE] Устройство {device_id} обновило состояние насоса: {pump_state}, команда: {command}, успех: {success}")
 
     # Сохраняем результат выполнения команды
     command_results[device_id][command] = {
@@ -193,22 +191,25 @@ def toggle_pump(device_id):
     Добавляет команду переключения насоса в очередь для ESP32.
     """
     try:
-        # Проверяем, есть ли устройство в базе
+        # Проверяем, есть ли устройство
         if device_id not in latest_sensor_data and device_id not in device_ip_map:
             print(f"[ERROR] Устройство {device_id} не найдено")
             return jsonify({"error": "Устройство не найдено"}), 404
 
-        # Добавляем команду в очередь вместо прямого вызова
+        # Добавляем команду в очередь
         queue_command(device_id, "toggle_pump")
 
-        # Возвращаем текущее состояние (оно может измениться после выполнения команды)
+        # Возвращаем текущее состояние
         current_state = latest_sensor_data.get(device_id, {}).get('pump', False)
+        pending = len(command_queue[device_id])
+
+        print(f"[TOGGLE] Команда toggle_pump добавлена в очередь для {device_id}. Текущее состояние: {current_state}, ожидает: {pending}")
 
         return jsonify({
             "success": True,
             "message": "Команда добавлена в очередь",
             "pump": current_state,
-            "pending": len(command_queue[device_id])
+            "pending": pending
         }), 200
 
     except Exception as e:
@@ -216,26 +217,6 @@ def toggle_pump(device_id):
         import traceback
         traceback.print_exc()
         return jsonify({"error": f"Внутренняя ошибка сервера: {str(e)}"}), 500
-    # Проверяем, есть ли IP для этого устройства
-    esp_ip = device_ip_map.get(device_id)
-    if not esp_ip:
-        return jsonify({"error": "IP устройства неизвестен"}), 404
-
-    # Отправляем POST-запрос на ESP
-    try:
-        url = f"http://{esp_ip}/togglePump"
-        # ESP ожидает POST с пустым телом (можно {} )
-        resp = requests.post(url, json={}, timeout=5)
-        if resp.status_code == 200:
-            new_state = resp.json().get('pump')
-            # Обновляем сохранённое состояние
-            if device_id in latest_sensor_data:
-                latest_sensor_data[device_id]['pump'] = new_state
-            return jsonify({"success": True, "pump": new_state}), 200
-        else:
-            return jsonify({"error": f"ESP вернул код {resp.status_code}"}), 502
-    except requests.exceptions.RequestException as e:
-        return jsonify({"error": f"Ошибка соединения с ESP: {str(e)}"}), 500
 
 def pump_on(device_id):
     """
@@ -247,6 +228,8 @@ def pump_on(device_id):
             return jsonify({"error": "Устройство не найдено"}), 404
 
         queue_command(device_id, "pump_on")
+
+        print(f"[PUMP_ON] Команда pump_on добавлена в очередь для {device_id}")
 
         return jsonify({
             "success": True,
@@ -266,6 +249,8 @@ def pump_off(device_id):
             return jsonify({"error": "Устройство не найдено"}), 404
 
         queue_command(device_id, "pump_off")
+
+        print(f"[PUMP_OFF] Команда pump_off добавлена в очередь для {device_id}")
 
         return jsonify({
             "success": True,
