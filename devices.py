@@ -3,12 +3,15 @@ devices.py - Модуль для работы с ESP32 устройствами
 """
 from flask import request, jsonify
 from datetime import datetime
-import requests  # для отправки команд на ESP
+import requests
+from collections import defaultdict
+import threading
+import time
 
 # Константы
 ESP32_API_KEY = "esp32_secret_key_123"
 
-# Инициализация сервисов (ваши существующие)
+# Инициализация сервисов
 from Sensor_service import SensorService
 from Scenario_service import ScenarioService
 
@@ -16,9 +19,12 @@ sensor_service = SensorService()
 scenario_service = ScenarioService()
 
 # ------------------- Хранилище данных от ESP32 -------------------
-# В реальном проекте используйте базу данных, здесь для простоты - словари
 latest_sensor_data = {}      # key: device_id, value: последние показания + pump
 device_ip_map = {}           # key: device_id, value: последний известный IP ESP32
+
+# ------------------- ОЧЕРЕДЬ КОМАНД -------------------
+command_queue = defaultdict(list)  # device_id -> list of commands
+command_results = defaultdict(dict)  # device_id -> command results
 
 # -----------------------------------------------------------------
 
@@ -31,6 +37,16 @@ def verify_esp32_key():
         return False, "Неверный API ключ"
     return True, ""
 
+def queue_command(device_id, command, params=None):
+    """Добавить команду в очередь для устройства"""
+    cmd = {
+        "command": command,
+        "params": params or {},
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    command_queue[device_id].append(cmd)
+    print(f"[QUEUE] Добавлена команда {command} для {device_id}")
+    return True
 
 # ========== ЭНДПОИНТЫ ДЛЯ ESP32 ==========
 
@@ -63,7 +79,7 @@ def process_sensor_data():
     print(f"[{datetime.now()}] Данные от {device_id} с IP {client_ip}: {latest_sensor_data[device_id]}")
 
     try:
-        # 🔧 Преобразование во flat_data
+        # Преобразование во flat_data
         flat_data = {
             "device_id": device_id,
             "temp": sensors.get('temp'),
@@ -74,32 +90,18 @@ def process_sensor_data():
         }
         result = sensor_service.process_sensor_data(flat_data)
 
-        # Отладка: выводим результат сервиса
         print("Результат сервиса:", result)
 
-        # ------------------- ОБРАБОТКА КОМАНД -------------------
-        # Если сервис вернул команды, выполняем их
+        # Обработка команд от сервиса (автоматическое управление)
         for cmd in result.get('commands', []):
             if cmd['command'] == 'pump_on':
-                esp_ip = device_ip_map.get(device_id)
-                if esp_ip:
-                    try:
-                        # Отправляем команду переключения насоса
-                        resp = requests.post(f"http://{esp_ip}/togglePump", json={}, timeout=2)
-                        if resp.status_code == 200:
-                            new_state = resp.json().get('pump')
-                            # Обновляем сохранённое состояние
-                            if device_id in latest_sensor_data:
-                                latest_sensor_data[device_id]['pump'] = new_state
-                            print(f"Автоматическое включение насоса на {esp_ip}, новое состояние: {new_state}")
-                        else:
-                            print(f"Ошибка при отправке pump_on: {resp.status_code}")
-                    except Exception as e:
-                        print(f"Исключение при отправке pump_on: {e}")
-                else:
-                    print(f"IP для устройства {device_id} не найден в device_ip_map")
-            # Здесь можно добавить обработку других команд (например, alert)
-        # ---------------------------------------------------------
+                # Добавляем команду в очередь вместо прямого вызова
+                queue_command(device_id, "pump_on")
+                print(f"[AUTO] Добавлена команда pump_on для {device_id}")
+            elif cmd['command'] == 'pump_off':
+                queue_command(device_id, "pump_off")
+                print(f"[AUTO] Добавлена команда pump_off для {device_id}")
+            # Здесь можно добавить обработку других команд
 
         return jsonify(result), 200
     except ValueError as e:
@@ -108,6 +110,60 @@ def process_sensor_data():
         print(f"Ошибка обработки данных: {e}")
         return jsonify({"success": False, "error": "Внутренняя ошибка сервера"}), 500
 
+def get_device_command(device_id):
+    """
+    GET /api/device/<device_id>/command
+    ESP32 запрашивает команды (polling)
+    """
+    is_valid, error = verify_esp32_key()
+    if not is_valid:
+        return jsonify({"success": False, "error": error}), 401
+
+    # Получаем следующую команду из очереди
+    if command_queue[device_id]:
+        cmd = command_queue[device_id].pop(0)
+        print(f"[CMD] Отдаю команду {cmd['command']} устройству {device_id}")
+        return jsonify({
+            "has_command": True,
+            "command": cmd['command'],
+            "params": cmd['params']
+        }), 200
+    else:
+        return jsonify({
+            "has_command": False,
+            "command": None
+        }), 200
+
+def update_pump_state(device_id):
+    """
+    POST /api/device/<device_id>/pump/state
+    ESP32 обновляет состояние насоса после выполнения команды
+    """
+    is_valid, error = verify_esp32_key()
+    if not is_valid:
+        return jsonify({"success": False, "error": error}), 401
+
+    data = request.get_json()
+    pump_state = data.get('pump')
+    command = data.get('command')  # какая команда была выполнена
+    success = data.get('success', True)
+
+    if device_id in latest_sensor_data:
+        latest_sensor_data[device_id]['pump'] = pump_state
+        latest_sensor_data[device_id]['last_command'] = command
+        latest_sensor_data[device_id]['command_success'] = success
+        latest_sensor_data[device_id]['command_time'] = datetime.utcnow().isoformat()
+
+    print(f"[STATE] Устройство {device_id} обновило состояние насоса: {pump_state}, команда: {command}")
+
+    # Сохраняем результат выполнения команды
+    command_results[device_id][command] = {
+        "success": success,
+        "pump_state": pump_state,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+    return jsonify({"success": True}), 200
 
 def get_device_scenario(device_id):
     """Возвращает сценарий для устройства (вызывается ESP32)."""
@@ -121,7 +177,6 @@ def get_device_scenario(device_id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-
 def get_device_data(device_id):
     """
     GET /api/device/<device_id>/data
@@ -132,61 +187,29 @@ def get_device_data(device_id):
         return jsonify({"error": "Нет данных для данного устройства"}), 404
     return jsonify(data), 200
 
-
 def toggle_pump(device_id):
     """
     POST /api/device/<device_id>/pump/toggle
-    Отправляет команду переключения насоса на ESP32.
+    Добавляет команду переключения насоса в очередь для ESP32.
     """
     try:
-        # Проверяем, есть ли IP для этого устройства
-        esp_ip = device_ip_map.get(device_id)
-        if not esp_ip:
-            print(f"[ERROR] IP для устройства {device_id} не найден в device_ip_map")
-            return jsonify({"error": "IP устройства неизвестен"}), 404
+        # Проверяем, есть ли устройство в базе
+        if device_id not in latest_sensor_data and device_id not in device_ip_map:
+            print(f"[ERROR] Устройство {device_id} не найдено")
+            return jsonify({"error": "Устройство не найдено"}), 404
 
-        print(f"[DEBUG] Отправка команды togglePump на {esp_ip} для устройства {device_id}")
+        # Добавляем команду в очередь вместо прямого вызова
+        queue_command(device_id, "toggle_pump")
 
-        # Отправляем POST-запрос на ESP с таймаутом
-        url = f"http://{esp_ip}/togglePump"
+        # Возвращаем текущее состояние (оно может измениться после выполнения команды)
+        current_state = latest_sensor_data.get(device_id, {}).get('pump', False)
 
-        try:
-            resp = requests.post(url, json={}, timeout=3)
-            print(f"[DEBUG] ESP ответил с кодом: {resp.status_code}")
-
-            if resp.status_code == 200:
-                try:
-                    response_data = resp.json()
-                    new_state = response_data.get('pump')
-                    print(f"[DEBUG] Новое состояние насоса: {new_state}")
-
-                    # Обновляем сохранённое состояние
-                    if device_id in latest_sensor_data:
-                        latest_sensor_data[device_id]['pump'] = new_state
-                        print(
-                            f"[DEBUG] Обновлено состояние в latest_sensor_data: {latest_sensor_data[device_id]['pump']}")
-                    else:
-                        print(f"[WARNING] Устройство {device_id} не найдено в latest_sensor_data")
-                        # Создаем запись если её нет
-                        latest_sensor_data[device_id] = {
-                            'pump': new_state,
-                            'timestamp': datetime.utcnow().isoformat()
-                        }
-
-                    return jsonify({"success": True, "pump": new_state}), 200
-                except ValueError as json_err:
-                    print(f"[ERROR] Ошибка парсинга JSON от ESP: {json_err}, ответ: {resp.text}")
-                    return jsonify({"error": "Неверный формат ответа от ESP"}), 502
-            else:
-                print(f"[ERROR] ESP вернул ошибку: {resp.status_code}, тело: {resp.text}")
-                return jsonify({"error": f"ESP вернул код {resp.status_code}"}), 502
-
-        except requests.exceptions.Timeout:
-            print(f"[ERROR] Таймаут при подключении к ESP {esp_ip}")
-            return jsonify({"error": "Таймаут соединения с ESP"}), 504
-        except requests.exceptions.ConnectionError as conn_err:
-            print(f"[ERROR] Ошибка подключения к ESP {esp_ip}: {conn_err}")
-            return jsonify({"error": f"ESP недоступен: {str(conn_err)}"}), 503
+        return jsonify({
+            "success": True,
+            "message": "Команда добавлена в очередь",
+            "pump": current_state,
+            "pending": len(command_queue[device_id])
+        }), 200
 
     except Exception as e:
         print(f"[ERROR] Непредвиденная ошибка в toggle_pump: {e}")
@@ -214,6 +237,43 @@ def toggle_pump(device_id):
     except requests.exceptions.RequestException as e:
         return jsonify({"error": f"Ошибка соединения с ESP: {str(e)}"}), 500
 
+def pump_on(device_id):
+    """
+    POST /api/device/<device_id>/pump/on
+    Добавляет команду включения насоса в очередь
+    """
+    try:
+        if device_id not in latest_sensor_data and device_id not in device_ip_map:
+            return jsonify({"error": "Устройство не найдено"}), 404
+
+        queue_command(device_id, "pump_on")
+
+        return jsonify({
+            "success": True,
+            "message": "Команда включения насоса добавлена в очередь",
+            "pump": latest_sensor_data.get(device_id, {}).get('pump', False)
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def pump_off(device_id):
+    """
+    POST /api/device/<device_id>/pump/off
+    Добавляет команду выключения насоса в очередь
+    """
+    try:
+        if device_id not in latest_sensor_data and device_id not in device_ip_map:
+            return jsonify({"error": "Устройство не найдено"}), 404
+
+        queue_command(device_id, "pump_off")
+
+        return jsonify({
+            "success": True,
+            "message": "Команда выключения насоса добавлена в очередь",
+            "pump": latest_sensor_data.get(device_id, {}).get('pump', False)
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 def get_pump_status(device_id):
     """
@@ -223,4 +283,28 @@ def get_pump_status(device_id):
     data = latest_sensor_data.get(device_id)
     if not data or 'pump' not in data:
         return jsonify({"error": "Состояние насоса неизвестно"}), 404
-    return jsonify({"pump": data['pump']}), 200
+
+    pending_commands = len(command_queue[device_id])
+
+    return jsonify({
+        "pump": data['pump'],
+        "pending_commands": pending_commands,
+        "last_update": data.get('timestamp'),
+        "last_command": data.get('last_command')
+    }), 200
+
+def get_command_queue_status(device_id):
+    """
+    GET /api/device/<device_id>/queue
+    Отладочный эндпоинт для просмотра очереди команд
+    """
+    is_valid, error = verify_esp32_key()
+    if not is_valid:
+        return jsonify({"success": False, "error": error}), 401
+
+    return jsonify({
+        "device_id": device_id,
+        "pending_commands": len(command_queue[device_id]),
+        "commands": command_queue[device_id],
+        "last_results": command_results.get(device_id, {})
+    }), 200
