@@ -193,6 +193,26 @@ def toggle_pump(device_id):
         import traceback
         traceback.print_exc()
         return jsonify({"error": f"Внутренняя ошибка сервера: {str(e)}"}), 500
+    # Проверяем, есть ли IP для этого устройства
+    esp_ip = device_ip_map.get(device_id)
+    if not esp_ip:
+        return jsonify({"error": "IP устройства неизвестен"}), 404
+
+    # Отправляем POST-запрос на ESP
+    try:
+        url = f"http://{esp_ip}/togglePump"
+        # ESP ожидает POST с пустым телом (можно {} )
+        resp = requests.post(url, json={}, timeout=5)
+        if resp.status_code == 200:
+            new_state = resp.json().get('pump')
+            # Обновляем сохранённое состояние
+            if device_id in latest_sensor_data:
+                latest_sensor_data[device_id]['pump'] = new_state
+            return jsonify({"success": True, "pump": new_state}), 200
+        else:
+            return jsonify({"error": f"ESP вернул код {resp.status_code}"}), 502
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": f"Ошибка соединения с ESP: {str(e)}"}), 500
 
 
 def get_pump_status(device_id):
