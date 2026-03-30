@@ -19,8 +19,8 @@ class MQTTService:
         # Настройки из переменных окружения
         self.mqtt_host = "4fc91b0cfc8d474b9e791bae55b873f6.s1.eu.hivemq.cloud"
         self.mqtt_port = 8883
-        self.mqtt_username = "Kirrius"  # Замените на ваши данные
-        self.mqtt_password = "Yandex2019"  # Замените на ваши данные
+        self.mqtt_username = "esp32_device"  # Замените на ваши данные
+        self.mqtt_password = "PlantCare2024"  # Замените на ваши данные
 
         # Настройка SSL
         self.client.tls_set(ca_certs=None, certfile=None, keyfile=None,
