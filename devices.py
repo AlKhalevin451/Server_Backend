@@ -138,6 +138,61 @@ def toggle_pump(device_id):
     POST /api/device/<device_id>/pump/toggle
     Отправляет команду переключения насоса на ESP32.
     """
+    try:
+        # Проверяем, есть ли IP для этого устройства
+        esp_ip = device_ip_map.get(device_id)
+        if not esp_ip:
+            print(f"[ERROR] IP для устройства {device_id} не найден в device_ip_map")
+            return jsonify({"error": "IP устройства неизвестен"}), 404
+
+        print(f"[DEBUG] Отправка команды togglePump на {esp_ip} для устройства {device_id}")
+
+        # Отправляем POST-запрос на ESP с таймаутом
+        url = f"http://{esp_ip}/togglePump"
+
+        try:
+            resp = requests.post(url, json={}, timeout=3)
+            print(f"[DEBUG] ESP ответил с кодом: {resp.status_code}")
+
+            if resp.status_code == 200:
+                try:
+                    response_data = resp.json()
+                    new_state = response_data.get('pump')
+                    print(f"[DEBUG] Новое состояние насоса: {new_state}")
+
+                    # Обновляем сохранённое состояние
+                    if device_id in latest_sensor_data:
+                        latest_sensor_data[device_id]['pump'] = new_state
+                        print(
+                            f"[DEBUG] Обновлено состояние в latest_sensor_data: {latest_sensor_data[device_id]['pump']}")
+                    else:
+                        print(f"[WARNING] Устройство {device_id} не найдено в latest_sensor_data")
+                        # Создаем запись если её нет
+                        latest_sensor_data[device_id] = {
+                            'pump': new_state,
+                            'timestamp': datetime.utcnow().isoformat()
+                        }
+
+                    return jsonify({"success": True, "pump": new_state}), 200
+                except ValueError as json_err:
+                    print(f"[ERROR] Ошибка парсинга JSON от ESP: {json_err}, ответ: {resp.text}")
+                    return jsonify({"error": "Неверный формат ответа от ESP"}), 502
+            else:
+                print(f"[ERROR] ESP вернул ошибку: {resp.status_code}, тело: {resp.text}")
+                return jsonify({"error": f"ESP вернул код {resp.status_code}"}), 502
+
+        except requests.exceptions.Timeout:
+            print(f"[ERROR] Таймаут при подключении к ESP {esp_ip}")
+            return jsonify({"error": "Таймаут соединения с ESP"}), 504
+        except requests.exceptions.ConnectionError as conn_err:
+            print(f"[ERROR] Ошибка подключения к ESP {esp_ip}: {conn_err}")
+            return jsonify({"error": f"ESP недоступен: {str(conn_err)}"}), 503
+
+    except Exception as e:
+        print(f"[ERROR] Непредвиденная ошибка в toggle_pump: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Внутренняя ошибка сервера: {str(e)}"}), 500
     # Проверяем, есть ли IP для этого устройства
     esp_ip = device_ip_map.get(device_id)
     if not esp_ip:
