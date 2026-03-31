@@ -26,6 +26,12 @@ else:
 def shutdown_session(exception=None):
     close_db()
 
+# Уведомления
+@app.route('/api/device/<device_id>/notifications', methods=['GET'])
+def get_notifications(device_id):
+    """Android получает уведомления"""
+    return devices.get_notifications(device_id)
+
 # Существующие маршруты d cthdtht
 @app.route('/test/assign', methods=['POST'])
 def test_assign():

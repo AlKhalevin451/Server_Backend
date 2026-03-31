@@ -11,14 +11,10 @@ import json
 mqtt_service = None
 
 def set_mqtt_service(mqtt):
-    global mqtt_service
-    mqtt_service = mqtt
-    print("✅ MQTT сервис установлен в devices")
-
-def set_mqtt_service(mqtt):
     """Установка глобального MQTT сервиса"""
     global mqtt_service
     mqtt_service = mqtt
+    print("✅ MQTT сервис установлен в devices")
 
 # Константы
 ESP32_API_KEY = "esp32_secret_key_123"
@@ -287,6 +283,125 @@ def get_device_info(device_id):
         "pump_state": data.get('pump', False),
         "has_data": True
     }), 200
+
+
+# -----------------------------------------------------------------
+# УВЕДОМЛЕНИЯ ДЛЯ ANDROID
+# -----------------------------------------------------------------
+
+def get_notifications(device_id):
+    """
+    GET /api/device/<device_id>/notifications
+    Возвращает список уведомлений для Android
+    """
+    data = latest_sensor_data.get(device_id)
+    notifications = []
+
+    if data:
+        # Проверка влажности почвы
+        soil = data.get('soil', 100)
+        if soil is not None:
+            if soil < 15:
+                notifications.append({
+                    "title": "⚠️ КРИТИЧЕСКАЯ ВЛАЖНОСТЬ ПОЧВЫ!",
+                    "message": f"Влажность почвы {soil}%. НЕМЕДЛЕННО полейте растение!",
+                    "type": "soil_critical",
+                    "level": "critical"
+                })
+            elif soil < 25:
+                notifications.append({
+                    "title": "💧 Низкая влажность почвы",
+                    "message": f"Влажность почвы {soil}%. Растение нуждается в поливе.",
+                    "type": "soil_low",
+                    "level": "warning"
+                })
+            elif soil > 80:
+                notifications.append({
+                    "title": "💧 Высокая влажность почвы",
+                    "message": f"Влажность почвы {soil}%. Возможно переувлажнение. Уменьшите полив.",
+                    "type": "soil_high",
+                    "level": "warning"
+                })
+
+        # Проверка температуры
+        temp = data.get('temp', 0)
+        if temp is not None:
+            if temp > 38:
+                notifications.append({
+                    "title": "🌡️ КРИТИЧЕСКАЯ ТЕМПЕРАТУРА!",
+                    "message": f"Температура {temp:.1f}°C. Растение может перегреться!",
+                    "type": "temp_critical",
+                    "level": "critical"
+                })
+            elif temp > 32:
+                notifications.append({
+                    "title": "🌡️ Высокая температура",
+                    "message": f"Температура {temp:.1f}°C. Растению жарко.",
+                    "type": "temp_high",
+                    "level": "warning"
+                })
+            elif temp < 10:
+                notifications.append({
+                    "title": "❄️ Низкая температура",
+                    "message": f"Температура {temp:.1f}°C. Растению холодно.",
+                    "type": "temp_low",
+                    "level": "warning"
+                })
+            elif temp < 5:
+                notifications.append({
+                    "title": "❄️ КРИТИЧЕСКИ НИЗКАЯ ТЕМПЕРАТУРА!",
+                    "message": f"Температура {temp:.1f}°C. Растение может замерзнуть!",
+                    "type": "temp_critical",
+                    "level": "critical"
+                })
+
+        # Проверка освещенности
+        light = data.get('light', 0)
+        if light is not None:
+            if light < 50:
+                notifications.append({
+                    "title": "🌑 Критически мало света!",
+                    "message": f"Освещенность {light:.0f} лк. Растению не хватает света!",
+                    "type": "light_critical",
+                    "level": "critical"
+                })
+            elif light < 150:
+                notifications.append({
+                    "title": "🌑 Недостаточно света",
+                    "message": f"Освещенность {light:.0f} лк. Переставьте растение ближе к окну.",
+                    "type": "light_low",
+                    "level": "warning"
+                })
+
+        # Проверка влажности воздуха
+        humidity = data.get('humidity', 0)
+        if humidity is not None:
+            if humidity < 30:
+                notifications.append({
+                    "title": "💨 Сухой воздух",
+                    "message": f"Влажность воздуха {humidity:.0f}%. Опрыскайте растение.",
+                    "type": "humidity_low",
+                    "level": "info"
+                })
+            elif humidity > 80:
+                notifications.append({
+                    "title": "💧 Высокая влажность воздуха",
+                    "message": f"Влажность воздуха {humidity:.0f}%. Возможен риск грибковых заболеваний.",
+                    "type": "humidity_high",
+                    "level": "info"
+                })
+
+        # Проверка состояния насоса
+        pump = data.get('pump', False)
+        if pump:
+            notifications.append({
+                "title": "💧 Насос включен",
+                "message": "Система полива активна. Растение поливается.",
+                "type": "pump_on",
+                "level": "info"
+            })
+
+    return jsonify({"notifications": notifications}), 200
 
 
 # -----------------------------------------------------------------
