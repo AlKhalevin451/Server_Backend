@@ -163,13 +163,12 @@ def toggle_pump(device_id):
     """
     POST /api/device/<device_id>/pump/toggle
     Android переключает насос.
-    Отправляет команду через MQTT (основной способ) или HTTP (fallback).
     """
     # Пытаемся отправить через MQTT
     if mqtt_service:
         success, result = send_mqtt_command(device_id, "toggle_pump")
         if success:
-            # Обновляем локальное состояние (предполагаем, что переключится)
+            # Обновляем локальное состояние
             if device_id in latest_sensor_data:
                 current_state = latest_sensor_data[device_id].get('pump', False)
                 latest_sensor_data[device_id]['pump'] = not current_state
@@ -199,7 +198,6 @@ def pump_on(device_id):
     POST /api/device/<device_id>/pump/on
     Android включает насос.
     """
-    # Пытаемся отправить через MQTT
     if mqtt_service:
         success, result = send_mqtt_command(device_id, "pump_on")
         if success:
@@ -207,7 +205,6 @@ def pump_on(device_id):
                 latest_sensor_data[device_id]['pump'] = True
             return jsonify({"success": True, "pump": True}), 200
 
-    # Fallback через HTTP
     esp_ip = device_ip_map.get(device_id)
     if not esp_ip:
         return jsonify({"error": "MQTT недоступен и IP устройства неизвестен"}), 404
@@ -230,7 +227,6 @@ def pump_off(device_id):
     POST /api/device/<device_id>/pump/off
     Android выключает насос.
     """
-    # Пытаемся отправить через MQTT
     if mqtt_service:
         success, result = send_mqtt_command(device_id, "pump_off")
         if success:
@@ -238,7 +234,6 @@ def pump_off(device_id):
                 latest_sensor_data[device_id]['pump'] = False
             return jsonify({"success": True, "pump": False}), 200
 
-    # Fallback через HTTP
     esp_ip = device_ip_map.get(device_id)
     if not esp_ip:
         return jsonify({"error": "MQTT недоступен и IP устройства неизвестен"}), 404
@@ -286,122 +281,32 @@ def get_device_info(device_id):
 
 
 # -----------------------------------------------------------------
-# УВЕДОМЛЕНИЯ ДЛЯ ANDROID
+# УВЕДОМЛЕНИЯ ДЛЯ ANDROID (УПРОЩЕННО - ТОЛЬКО ДАННЫЕ)
 # -----------------------------------------------------------------
 
 def get_notifications(device_id):
     """
     GET /api/device/<device_id>/notifications
-    Возвращает список уведомлений для Android
+    Уведомления больше не генерируются на сервере.
+    Android сам проверяет сценарии и отправляет уведомления.
+    Возвращает только данные датчиков для Android.
     """
     data = latest_sensor_data.get(device_id)
-    notifications = []
+    if not data:
+        return jsonify({"notifications": [], "sensor_data": None}), 200
 
-    if data:
-        # Проверка влажности почвы
-        soil = data.get('soil', 100)
-        if soil is not None:
-            if soil < 15:
-                notifications.append({
-                    "title": "⚠️ КРИТИЧЕСКАЯ ВЛАЖНОСТЬ ПОЧВЫ!",
-                    "message": f"Влажность почвы {soil}%. НЕМЕДЛЕННО полейте растение!",
-                    "type": "soil_critical",
-                    "level": "critical"
-                })
-            elif soil < 25:
-                notifications.append({
-                    "title": "💧 Низкая влажность почвы",
-                    "message": f"Влажность почвы {soil}%. Растение нуждается в поливе.",
-                    "type": "soil_low",
-                    "level": "warning"
-                })
-            elif soil > 80:
-                notifications.append({
-                    "title": "💧 Высокая влажность почвы",
-                    "message": f"Влажность почвы {soil}%. Возможно переувлажнение. Уменьшите полив.",
-                    "type": "soil_high",
-                    "level": "warning"
-                })
-
-        # Проверка температуры
-        temp = data.get('temp', 0)
-        if temp is not None:
-            if temp > 38:
-                notifications.append({
-                    "title": "🌡️ КРИТИЧЕСКАЯ ТЕМПЕРАТУРА!",
-                    "message": f"Температура {temp:.1f}°C. Растение может перегреться!",
-                    "type": "temp_critical",
-                    "level": "critical"
-                })
-            elif temp > 32:
-                notifications.append({
-                    "title": "🌡️ Высокая температура",
-                    "message": f"Температура {temp:.1f}°C. Растению жарко.",
-                    "type": "temp_high",
-                    "level": "warning"
-                })
-            elif temp < 10:
-                notifications.append({
-                    "title": "❄️ Низкая температура",
-                    "message": f"Температура {temp:.1f}°C. Растению холодно.",
-                    "type": "temp_low",
-                    "level": "warning"
-                })
-            elif temp < 5:
-                notifications.append({
-                    "title": "❄️ КРИТИЧЕСКИ НИЗКАЯ ТЕМПЕРАТУРА!",
-                    "message": f"Температура {temp:.1f}°C. Растение может замерзнуть!",
-                    "type": "temp_critical",
-                    "level": "critical"
-                })
-
-        # Проверка освещенности
-        light = data.get('light', 0)
-        if light is not None:
-            if light < 50:
-                notifications.append({
-                    "title": "🌑 Критически мало света!",
-                    "message": f"Освещенность {light:.0f} лк. Растению не хватает света!",
-                    "type": "light_critical",
-                    "level": "critical"
-                })
-            elif light < 150:
-                notifications.append({
-                    "title": "🌑 Недостаточно света",
-                    "message": f"Освещенность {light:.0f} лк. Переставьте растение ближе к окну.",
-                    "type": "light_low",
-                    "level": "warning"
-                })
-
-        # Проверка влажности воздуха
-        humidity = data.get('humidity', 0)
-        if humidity is not None:
-            if humidity < 30:
-                notifications.append({
-                    "title": "💨 Сухой воздух",
-                    "message": f"Влажность воздуха {humidity:.0f}%. Опрыскайте растение.",
-                    "type": "humidity_low",
-                    "level": "info"
-                })
-            elif humidity > 80:
-                notifications.append({
-                    "title": "💧 Высокая влажность воздуха",
-                    "message": f"Влажность воздуха {humidity:.0f}%. Возможен риск грибковых заболеваний.",
-                    "type": "humidity_high",
-                    "level": "info"
-                })
-
-        # Проверка состояния насоса
-        pump = data.get('pump', False)
-        if pump:
-            notifications.append({
-                "title": "💧 Насос включен",
-                "message": "Система полива активна. Растение поливается.",
-                "type": "pump_on",
-                "level": "info"
-            })
-
-    return jsonify({"notifications": notifications}), 200
+    # Возвращаем текущие данные датчиков, чтобы Android мог проверить их по своим сценариям
+    return jsonify({
+        "notifications": [],  # Пустой массив - уведомления генерируются на Android
+        "sensor_data": {
+            "light": data.get('light'),
+            "soil": data.get('soil'),
+            "temp": data.get('temp'),
+            "humidity": data.get('humidity'),
+            "pump": data.get('pump', False),
+            "timestamp": data.get('timestamp')
+        }
+    }), 200
 
 
 # -----------------------------------------------------------------
@@ -411,7 +316,6 @@ def get_notifications(device_id):
 def process_mqtt_sensor_data(device_id, data):
     """
     Обработка данных от датчиков, полученных через MQTT.
-    Вызывается из mqtt_service при получении сообщения.
     """
     try:
         # Сохраняем данные
