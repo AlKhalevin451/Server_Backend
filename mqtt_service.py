@@ -12,15 +12,6 @@ class MQTTService:
         self.client.on_message = self.on_message
         self.app = app
 
-        # Настройки HiveMQ Cloud (если используете свой кластер)
-        # self.mqtt_host = "4fc91b0cfc8d474b9e791bae55b873f6.s1.eu.hivemq.cloud"
-        # self.mqtt_port = 8883
-        # self.mqtt_username = "esp32_device"
-        # self.mqtt_password = "PlantCare2024"
-        # self.client.tls_set(...)
-        # self.client.username_pw_set(...)
-
-        # Публичный брокер (для теста)
         self.mqtt_host = "broker.hivemq.com"
         self.mqtt_port = 1883
 
