@@ -6,15 +6,23 @@ import os
 # Подключаем другие файлы
 import auth
 import scenarios
-import devices   # наш обновлённый модуль
+import devices
 
-# Создаем Flask приложение
 app = Flask(__name__)
+
+# Инициализация MQTT
+from mqtt_service import init_mqtt
+mqtt = init_mqtt(app)
+
+if mqtt:
+    devices.set_mqtt_service(mqtt)
+    print("✅ MQTT сервис инициализирован")
+else:
+    print("⚠️ MQTT сервис не инициализирован")
 
 # Инициализация БД при старте приложения
 with app.app_context():
     init_db()
-    # Создаем базовые сценарии если их нет
     from config import Config
     config = Config()
     config.make_base_scenarios('plantcare.db')
@@ -26,16 +34,9 @@ asgi_app = WsgiToAsgi(app)
 def shutdown_session(exception=None):
     close_db()
 
-# Существующие маршруты d cthdtht
-@app.route('/test/assign', methods=['POST'])
-def test_assign():
-    data = request.get_json()
-    return jsonify({
-        "success": True,
-        "message": "Тестовый эндпоинт работает",
-        "received_data": data,
-        "requires_password": False
-    }), 200
+# -----------------------------------------------------------------
+# МАРШРУТЫ
+# -----------------------------------------------------------------
 
 @app.route('/')
 def home():
@@ -58,7 +59,10 @@ def home():
                 "get_scenario": "GET /api/device/<device_id>/scenario",
                 "get_device_data": "GET /api/device/<device_id>/data",
                 "toggle_pump": "POST /api/device/<device_id>/pump/toggle",
-                "pump_status": "GET /api/device/<device_id>/pump/status"
+                "pump_on": "POST /api/device/<device_id>/pump/on",
+                "pump_off": "POST /api/device/<device_id>/pump/off",
+                "pump_status": "GET /api/device/<device_id>/pump/status",
+                "notifications": "GET /api/device/<device_id>/notifications"
             },
             "Система": {
                 "health": "GET /api/health",
@@ -106,34 +110,42 @@ def debug_all_scenarios():
 # Устройства (ESP32)
 @app.route('/api/device/data', methods=['POST'])
 def device_data():
-    """ESP32 отправляет данные датчиков."""
     return devices.process_sensor_data()
 
 @app.route('/api/device/<device_id>/scenario', methods=['GET'])
 def device_scenario(device_id):
-    """ESP32 запрашивает сценарий."""
     return devices.get_device_scenario(device_id)
 
 # Маршруты для ANDROID
 @app.route('/api/device/<device_id>/data', methods=['GET'])
 def get_device_data(device_id):
-    """Android получает последние данные датчиков."""
     return devices.get_device_data(device_id)
 
 @app.route('/api/device/<device_id>/pump/toggle', methods=['POST'])
 def toggle_pump(device_id):
-    """Android переключает насос."""
     return devices.toggle_pump(device_id)
+
+@app.route('/api/device/<device_id>/pump/on', methods=['POST'])
+def pump_on(device_id):
+    return devices.pump_on(device_id)
+
+@app.route('/api/device/<device_id>/pump/off', methods=['POST'])
+def pump_off(device_id):
+    return devices.pump_off(device_id)
 
 @app.route('/api/device/<device_id>/pump/status', methods=['GET'])
 def pump_status(device_id):
-    """Android запрашивает состояние насоса."""
     return devices.get_pump_status(device_id)
+
+@app.route('/api/device/<device_id>/notifications', methods=['GET'])
+def get_notifications(device_id):
+    """Android получает уведомления (упрощено - только данные)"""
+    return devices.get_notifications(device_id)
 
 # Системные маршруты
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    return jsonify({"status": "healthy", "database": "connected"}), 200
+    return jsonify({"status": "healthy", "database": "connected", "mqtt": mqtt is not None}), 200
 
 @app.route('/api/info', methods=['GET'])
 def server_info():
@@ -159,11 +171,6 @@ def unauthorized(error):
 @app.errorhandler(500)
 def internal_error(error):
     return jsonify({"success": False, "error": "Внутренняя ошибка сервера"}), 500
-
-'''@app.route('/api/device/<device_id>/notifications', methods=['GET'])
-def device_notifications(device_id):
-    return devices.get_notifications(device_id)
-    '''
 
 # Запуск
 if __name__ == '__main__':
