@@ -1,7 +1,6 @@
-"""
-config.py - Конфигурация сервера
-"""
-import sqlite3
+# config.py - Конфигурация сервера
+# Используемые библиотеки
+import sqlite3 # Для работы с SQLite
 
 
 class Config: # Базовая конфигурация
@@ -22,7 +21,7 @@ class Config: # Базовая конфигурация
         # ИЗМЕНЕНИЕ: Проверяем только публичные сценарии
         # Проверяем только публичные сценарии
         cursor.execute("SELECT COUNT(*) FROM scenarios WHERE created_by IS NULL")
-        if cursor.fetchone()[0] == 0:  # ← если публичных сценариев = 0
+        if cursor.fetchone()[0] == 0:  # Если публичных сценариев нет
             default_scenarios = [
                 ("Тропики", 10.0, 18.0, 60.0, 95.0, 60.0, 90.0, 2300.0, 2700.0, None),
                 ("Зелёный оазис", 18.0, 24.0, 60.0, 95.0, 60.0, 90.0, 3000.0, 3900.0, None),
@@ -43,7 +42,7 @@ class Config: # Базовая конфигурация
                 ("Сухая равнина", 10.0, 18.0, 60.0, 95.0, 60.0, 90.0, 2300.0, 2700.0, None),
                 ("Жаркая пустыня", 10.0, 18.0, 60.0, 95.0, 60.0, 90.0, 2300.0, 2700.0, None)
             ]
-
+            # Вставляем в таблицу сценариев всех сразу
             cursor.executemany(
                 """INSERT INTO scenarios 
                    (nam, min_temperature, max_temperature, 
@@ -53,13 +52,9 @@ class Config: # Базовая конфигурация
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 default_scenarios
             )
-
-            print(f"Создано {len(default_scenarios)} базовых сценариев")
-        else:
-            print("Базовые сценарии уже существуют")
-
         conn.commit()
         conn.close()
+
 
 class DevelopmentConfig(Config): # Конфигурация для разработки
     DEBUG = True

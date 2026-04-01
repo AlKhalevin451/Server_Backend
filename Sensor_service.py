@@ -59,7 +59,7 @@ class SensorService:
         row = query_db("""
             SELECT 
                 s.iid,
-                s.nam AS plant_name,           -- преобразуем nam в plant_name
+                s.nam AS plant_name,           
                 s.min_temperature, 
                 s.max_temperature,
                 s.min_soil_moisture, 
@@ -69,7 +69,7 @@ class SensorService:
                 s.min_light_lux, 
                 s.max_light_lux,
                 s.created_by
-            FROM scenarios s
+            FROM scenarios AS s
             INNER JOIN user_scenarios AS us ON s.iid = us.scenario_id
             WHERE us.device_id = ? AND us.is_active = 1
             ORDER BY us.created_at DESC
