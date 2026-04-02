@@ -374,9 +374,17 @@ def process_mqtt_sensor_data(device_id, data):
     try:
         # Сохраняем все датчики как есть (динамические ключи)
         sensors = data.get('sensors', {})
+
+        # Если sensors пустой, но есть прямые поля, собираем их
+        if not sensors:
+            sensors = {}
+            for key in ['light', 'soil', 'temp', 'humidity', 'pump']:
+                if key in data:
+                    sensors[key] = data[key]
+
         latest_sensor_data[device_id] = {
             'timestamp': datetime.utcnow().isoformat(),
-            'sensors': sensors,  # Сохраняем весь объект sensors с любыми ключами
+            'sensors': sensors,
             'pump': sensors.get('pump', False)
         }
 
