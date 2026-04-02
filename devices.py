@@ -74,20 +74,18 @@ def process_sensor_data():
     client_ip = request.remote_addr
     device_ip_map[device_id] = client_ip
 
+    # Сохраняем все датчики как есть (динамические ключи)
     sensors = data.get('sensors', {})
     latest_sensor_data[device_id] = {
         'timestamp': datetime.utcnow().isoformat(),
-        'light': sensors.get('light'),
-        'soil': sensors.get('soil'),
-        'temp': sensors.get('temp'),
-        'humidity': sensors.get('humidity'),
+        'sensors': sensors,  # Сохраняем весь объект sensors с любыми ключами
         'pump': sensors.get('pump', False)
     }
 
     print(f"[{datetime.now()}] HTTP данные от {device_id} с IP {client_ip}: {latest_sensor_data[device_id]}")
 
     try:
-        # Преобразование во flat_data для SensorService
+        # Преобразование во flat_data для SensorService (только для совместимости)
         flat_data = {
             "device_id": device_id,
             "temp": sensors.get('temp'),
@@ -96,6 +94,11 @@ def process_sensor_data():
             "humidity": sensors.get('humidity'),
             "pump_state": sensors.get('pump', False)
         }
+        # Добавляем все остальные датчики в flat_data
+        for key, value in sensors.items():
+            if key not in ['temp', 'soil', 'light', 'humidity', 'pump']:
+                flat_data[key] = value
+
         result = sensor_service.process_sensor_data(flat_data)
 
         print("Результат обработки:", result)
@@ -138,11 +141,19 @@ def get_device_data(device_id):
     """
     GET /api/device/<device_id>/data
     Android получает последние данные датчиков.
+    Возвращает все датчики динамически.
     """
     data = latest_sensor_data.get(device_id)
     if not data:
         return jsonify({"error": "Нет данных для данного устройства"}), 404
-    return jsonify(data), 200
+
+    # Возвращаем полные данные, включая все датчики
+    response_data = {
+        'timestamp': data.get('timestamp'),
+        'sensors': data.get('sensors', {}),
+        'pump': data.get('pump', False)
+    }
+    return jsonify(response_data), 200
 
 
 def toggle_pump(device_id):
@@ -158,6 +169,9 @@ def toggle_pump(device_id):
             if device_id in latest_sensor_data:
                 current_state = latest_sensor_data[device_id].get('pump', False)
                 latest_sensor_data[device_id]['pump'] = not current_state
+                # Также обновляем в sensors
+                if 'sensors' in latest_sensor_data[device_id]:
+                    latest_sensor_data[device_id]['sensors']['pump'] = not current_state
             return jsonify({"success": True, "pump": latest_sensor_data[device_id]['pump']}), 200
 
     # Fallback: если MQTT не работает, пытаемся через HTTP (старый способ)
@@ -172,6 +186,8 @@ def toggle_pump(device_id):
             new_state = resp.json().get('pump')
             if device_id in latest_sensor_data:
                 latest_sensor_data[device_id]['pump'] = new_state
+                if 'sensors' in latest_sensor_data[device_id]:
+                    latest_sensor_data[device_id]['sensors']['pump'] = new_state
             return jsonify({"success": True, "pump": new_state}), 200
         else:
             return jsonify({"error": f"ESP вернул код {resp.status_code}"}), 502
@@ -189,6 +205,8 @@ def pump_on(device_id):
         if success:
             if device_id in latest_sensor_data:
                 latest_sensor_data[device_id]['pump'] = True
+                if 'sensors' in latest_sensor_data[device_id]:
+                    latest_sensor_data[device_id]['sensors']['pump'] = True
             return jsonify({"success": True, "pump": True}), 200
 
     esp_ip = device_ip_map.get(device_id)
@@ -201,6 +219,8 @@ def pump_on(device_id):
         if resp.status_code == 200:
             if device_id in latest_sensor_data:
                 latest_sensor_data[device_id]['pump'] = True
+                if 'sensors' in latest_sensor_data[device_id]:
+                    latest_sensor_data[device_id]['sensors']['pump'] = True
             return jsonify({"success": True, "pump": True}), 200
         else:
             return jsonify({"error": f"ESP вернул код {resp.status_code}"}), 502
@@ -218,6 +238,8 @@ def pump_off(device_id):
         if success:
             if device_id in latest_sensor_data:
                 latest_sensor_data[device_id]['pump'] = False
+                if 'sensors' in latest_sensor_data[device_id]:
+                    latest_sensor_data[device_id]['sensors']['pump'] = False
             return jsonify({"success": True, "pump": False}), 200
 
     esp_ip = device_ip_map.get(device_id)
@@ -230,6 +252,8 @@ def pump_off(device_id):
         if resp.status_code == 200:
             if device_id in latest_sensor_data:
                 latest_sensor_data[device_id]['pump'] = False
+                if 'sensors' in latest_sensor_data[device_id]:
+                    latest_sensor_data[device_id]['sensors']['pump'] = False
             return jsonify({"success": True, "pump": False}), 200
         else:
             return jsonify({"error": f"ESP вернул код {resp.status_code}"}), 502
@@ -257,11 +281,16 @@ def get_device_info(device_id):
     if not data:
         return jsonify({"error": "Устройство не найдено"}), 404
 
+    sensors_info = data.get('sensors', {})
+    sensor_keys = list(sensors_info.keys())
+
     return jsonify({
         "device_id": device_id,
         "last_seen": data.get('timestamp'),
         "ip": device_ip_map.get(device_id),
         "pump_state": data.get('pump', False),
+        "sensors_count": len(sensor_keys),
+        "sensors_list": sensor_keys,
         "has_data": True
     }), 200
 
@@ -275,24 +304,63 @@ def get_notifications(device_id):
     GET /api/device/<device_id>/notifications
     Уведомления больше не генерируются на сервере.
     Android сам проверяет сценарии и отправляет уведомления.
-    Возвращает только данные датчиков для Android.
+    Возвращает все данные датчиков для Android.
     """
     data = latest_sensor_data.get(device_id)
     if not data:
         return jsonify({"notifications": [], "sensor_data": None}), 200
 
-    # Возвращаем текущие данные датчиков, чтобы Android мог проверить их по своим сценариям
+    # Возвращаем текущие данные датчиков со всеми ключами
     return jsonify({
         "notifications": [],  # Пустой массив - уведомления генерируются на Android
-        "sensor_data": {
-            "light": data.get('light'),
-            "soil": data.get('soil'),
-            "temp": data.get('temp'),
-            "humidity": data.get('humidity'),
-            "pump": data.get('pump', False),
-            "timestamp": data.get('timestamp')
-        }
+        "sensor_data": data.get('sensors', {}),
+        "pump": data.get('pump', False),
+        "timestamp": data.get('timestamp')
     }), 200
+
+
+# -----------------------------------------------------------------
+# ДОПОЛНИТЕЛЬНЫЙ ЭНДПОИНТ ДЛЯ ОТЛАДКИ
+# -----------------------------------------------------------------
+
+def get_all_sensors(device_id):
+    """
+    GET /api/device/<device_id>/sensors
+    Возвращает список всех активных датчиков для устройства.
+    """
+    data = latest_sensor_data.get(device_id)
+    if not data:
+        return jsonify({"error": "Устройство не найдено"}), 404
+
+    sensors = data.get('sensors', {})
+    sensor_list = []
+    for key, value in sensors.items():
+        sensor_list.append({
+            "name": key,
+            "value": value,
+            "unit": _get_unit_for_sensor(key)
+        })
+
+    return jsonify({
+        "device_id": device_id,
+        "sensors": sensor_list,
+        "count": len(sensor_list)
+    }), 200
+
+
+def _get_unit_for_sensor(sensor_key):
+    """Определяет единицу измерения по ключу датчика"""
+    sensor_key_lower = sensor_key.lower()
+    if 'temp' in sensor_key_lower:
+        return "°C"
+    elif 'hum' in sensor_key_lower:
+        return "%"
+    elif 'light' in sensor_key_lower:
+        return "лк"
+    elif 'soil' in sensor_key_lower:
+        return "%"
+    else:
+        return ""
 
 
 # -----------------------------------------------------------------
@@ -304,14 +372,12 @@ def process_mqtt_sensor_data(device_id, data):
     Обработка данных от датчиков, полученных через MQTT.
     """
     try:
-        # Сохраняем данные
+        # Сохраняем все датчики как есть (динамические ключи)
+        sensors = data.get('sensors', {})
         latest_sensor_data[device_id] = {
             'timestamp': datetime.utcnow().isoformat(),
-            'light': data.get('sensors', {}).get('light'),
-            'soil': data.get('sensors', {}).get('soil'),
-            'temp': data.get('sensors', {}).get('temp'),
-            'humidity': data.get('sensors', {}).get('humidity'),
-            'pump': data.get('sensors', {}).get('pump', False)
+            'sensors': sensors,  # Сохраняем весь объект sensors с любыми ключами
+            'pump': sensors.get('pump', False)
         }
 
         print(f"[{datetime.now()}] MQTT данные от {device_id}: {latest_sensor_data[device_id]}")
@@ -319,12 +385,16 @@ def process_mqtt_sensor_data(device_id, data):
         # Преобразование для SensorService
         flat_data = {
             "device_id": device_id,
-            "temp": data.get('sensors', {}).get('temp'),
-            "soil_moisture": data.get('sensors', {}).get('soil'),
-            "light": data.get('sensors', {}).get('light'),
-            "humidity": data.get('sensors', {}).get('humidity'),
-            "pump_state": data.get('sensors', {}).get('pump', False)
+            "temp": sensors.get('temp'),
+            "soil_moisture": sensors.get('soil'),
+            "light": sensors.get('light'),
+            "humidity": sensors.get('humidity'),
+            "pump_state": sensors.get('pump', False)
         }
+        # Добавляем все остальные датчики в flat_data
+        for key, value in sensors.items():
+            if key not in ['temp', 'soil', 'light', 'humidity', 'pump']:
+                flat_data[key] = value
 
         result = sensor_service.process_sensor_data(flat_data)
         print(f"Результат обработки MQTT данных: {result}")
@@ -352,6 +422,9 @@ def process_mqtt_device_status(device_id, data):
             if device_id not in latest_sensor_data:
                 latest_sensor_data[device_id] = {}
             latest_sensor_data[device_id]['pump'] = data['pump_state']
+            if 'sensors' not in latest_sensor_data[device_id]:
+                latest_sensor_data[device_id]['sensors'] = {}
+            latest_sensor_data[device_id]['sensors']['pump'] = data['pump_state']
             print(f"[{datetime.now()}] Статус насоса {device_id}: {data['pump_state']}")
 
         if 'status' in data:
