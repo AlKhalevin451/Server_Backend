@@ -5,6 +5,7 @@ import time
 import traceback
 from datetime import datetime
 
+
 class MQTTService:
     def __init__(self, app=None):
         self.client = mqtt.Client()
@@ -55,13 +56,20 @@ class MQTTService:
         try:
             from devices import latest_sensor_data
 
+            # Сохраняем все датчики как есть (динамические ключи)
+            sensors = data.get('sensors', {})
+
+            # Если sensors пустой, но есть прямые поля, собираем их
+            if not sensors:
+                sensors = {}
+                for key in ['light', 'soil', 'temp', 'humidity', 'pump']:
+                    if key in data:
+                        sensors[key] = data[key]
+
             latest_sensor_data[device_id] = {
                 'timestamp': datetime.utcnow().isoformat(),
-                'light': data.get('sensors', {}).get('light'),
-                'soil': data.get('sensors', {}).get('soil'),
-                'temp': data.get('sensors', {}).get('temp'),
-                'humidity': data.get('sensors', {}).get('humidity'),
-                'pump': data.get('sensors', {}).get('pump', False)
+                'sensors': sensors,
+                'pump': sensors.get('pump', False)
             }
 
             print(f"💾 Данные сохранены для {device_id}: {latest_sensor_data[device_id]}")
@@ -72,11 +80,11 @@ class MQTTService:
                 sensor_service = SensorService()
                 flat_data = {
                     "device_id": device_id,
-                    "temp": data.get('sensors', {}).get('temp'),
-                    "soil_moisture": data.get('sensors', {}).get('soil'),
-                    "light": data.get('sensors', {}).get('light'),
-                    "humidity": data.get('sensors', {}).get('humidity'),
-                    "pump_state": data.get('sensors', {}).get('pump', False)
+                    "temp": sensors.get('temp'),
+                    "soil_moisture": sensors.get('soil'),
+                    "light": sensors.get('light'),
+                    "humidity": sensors.get('humidity'),
+                    "pump_state": sensors.get('pump', False)
                 }
                 result = sensor_service.process_sensor_data(flat_data)
                 print(f"🤖 Результат обработки: {result}")
@@ -97,6 +105,9 @@ class MQTTService:
                 if device_id not in latest_sensor_data:
                     latest_sensor_data[device_id] = {}
                 latest_sensor_data[device_id]['pump'] = data['pump_state']
+                if 'sensors' not in latest_sensor_data[device_id]:
+                    latest_sensor_data[device_id]['sensors'] = {}
+                latest_sensor_data[device_id]['sensors']['pump'] = data['pump_state']
                 print(f"🔄 Статус насоса {device_id}: {data['pump_state']}")
             if 'status' in data:
                 print(f"📊 Устройство {device_id}: {data['status']}")
@@ -118,6 +129,7 @@ class MQTTService:
 
     def start(self, app):
         self.app = app
+
         def run():
             try:
                 print(f"🔌 Подключение к MQTT брокеру {self.mqtt_host}:{self.mqtt_port}")
@@ -127,6 +139,7 @@ class MQTTService:
                 print(f"❌ Ошибка подключения: {e}")
                 time.sleep(5)
                 self.start(app)
+
         thread = threading.Thread(target=run)
         thread.daemon = True
         thread.start()
@@ -135,7 +148,9 @@ class MQTTService:
         self.client.loop_stop()
         self.client.disconnect()
 
+
 mqtt_service = None
+
 
 def init_mqtt(app):
     global mqtt_service
