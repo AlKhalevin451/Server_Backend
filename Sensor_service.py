@@ -87,24 +87,25 @@ class SensorService: # Класс сервиса обработки данных
         ))
         return reading_id
 
-    # Метод для сохранения уведомлений
+
     def _save_notification(self, device_id: str, message: str, type: str): # Метод для сохранения уведомлений
-        print(f"_save_notification ВЫЗВАН с параметрами: {device_id}, {message}, {type}")
+        # Вставляем уведомление в Базу Данных (если произошла ошибка - так и говорим)
+        print(f"Параметры уведомлений: {device_id}, {message}, {type}")
         try:
             execute_db('''
                 INSERT INTO notifications (device_id, message, type)
                 VALUES (?, ?, ?)
             ''', [device_id, message, type])
-            print("Уведомление успешно сохранено в БД")
+            print("Уведомление успешно сохранено в Базу Данных")
         except Exception as e:
             print(f"Ошибка при сохранении уведомления: {e}")
 
-    # 13. Приватные методы управления целью насоса
-    def _get_pump_target(self, device_id: str) -> Optional[bool]:
+
+    def _get_pump_target(self, device_id: str) -> Optional[bool]: # Функция для просмотра состояния насоса
         return self._pump_targets.get(device_id)
 
 
-    def _set_pump_target(self, device_id: str, target: bool):
+    def _set_pump_target(self, device_id: str, target: bool): # Функция для включения или выключения насоса
         self._pump_targets[device_id] = target
 
 
@@ -135,7 +136,6 @@ class SensorService: # Класс сервиса обработки данных
                     f"[{plant_name}] Почва слишком сухая ({current_soil}%), включаю насос",
                     "soil"
                 )
-
             elif current_soil >= max_soil and pump_target is True:
                 commands.append({
                     "command": "pump_off",
@@ -147,8 +147,7 @@ class SensorService: # Класс сервиса обработки данных
                     f"[{plant_name}] Почва увлажнена до {current_soil}%, насос выключен",
                     "soil"
                 )
-
-        # ----- ТЕМПЕРАТУРА -----
+        # Также, как и с влажностью почвы, проверяем температуру
         if scenario.min_temperature != self.PARAM_UNUSED and data.temperature < scenario.min_temperature:
             self._save_notification(
                 device_id,
@@ -161,8 +160,7 @@ class SensorService: # Класс сервиса обработки данных
                 f"[{plant_name}] Температура слишком высокая: {data.temperature}°C > {scenario.max_temperature}°C",
                 "temperature"
             )
-
-        # ----- ВЛАЖНОСТЬ ВОЗДУХА -----
+        # Также делаем и с влажностью воздуха
         if data.humidity is not None:
             if scenario.min_humidity != self.PARAM_UNUSED and data.humidity < scenario.min_humidity:
                 self._save_notification(
@@ -176,8 +174,7 @@ class SensorService: # Класс сервиса обработки данных
                     f"[{plant_name}] Влажность воздуха слишком высокая: {data.humidity}% > {scenario.max_humidity}%",
                     "humidity"
                 )
-
-        # ----- ОСВЕЩЁННОСТЬ -----
+        # Также делаем и с освещённостью
         if scenario.min_light_lux != self.PARAM_UNUSED and data.light < scenario.min_light_lux:
             self._save_notification(
                 device_id,
@@ -190,5 +187,5 @@ class SensorService: # Класс сервиса обработки данных
                 f"[{plant_name}] Освещённость слишком высокая: {data.light} лк > {scenario.max_light_lux} лк",
                 "light"
             )
-
+        # Выводим все уведомления (если они есть)
         return commands
