@@ -1,52 +1,41 @@
-# 1. Импорты - минимальный набор для работы
-from typing import Dict, List, Optional
-from models_for_sensor import DeviceData, Scenario
-from database import query_db, execute_db
-from datetime import datetime
+# Sensor_service - Сервис обработки данных с датчиков
+# Он отвечает за получение данных от аппаратной части, их обработку и их передачу в приложение
+# Используемые библиотеки
+from typing import Dict, List, Optional # Для перевода типов данных в словарь, список или какой хочется
+from models_for_sensor import DeviceData, Scenario # Для записи данных с контроллера
+from database import query_db, execute_db # Для работы с SQL-запросы
+from datetime import datetime # Для создания времени получения данных
 
 
-# 2. Объявление класса сервиса
-class SensorService:
-    """
-    Гибридный сервис для обработки данных с датчиков.
-    Содержит бизнес-логику и простые методы доступа к данным.
-    """
-    # Константа для обозначения "параметр не используется"
-    PARAM_UNUSED = 1000.0
-
-    def __init__(self):
-        # Хранилище целевых состояний насоса (device_id -> нужно ли включить)
+class SensorService: # Класс сервиса обработки данных с датчиков.
+    PARAM_UNUSED = 1000.0 # Переменная, которая нужна для обозначения того, что параметр не используется
+    def __init__(self): # Хранилище целевых состояний насоса
         self._pump_targets = {}
 
-    # 4. Основной публичный метод
-    def process_sensor_data(self, raw_data: Dict) -> Dict:
+
+    def process_sensor_data(self, raw_data: Dict) -> Dict: # Функция обработки данных.
         """
-        Основная бизнес-логика обработки данных.
         Args:
             raw_data: Сырые данные от ESP32 в виде словаря
         Returns:
             Словарь с результатом обработки и командами для устройства
         """
-        # 5. Преобразование сырых данных в типизированную модель
+        # Преобразуем данные с контроллера в модель устройства
         sensor_data = DeviceData(
             device_id=raw_data['device_id'],
-            temperature=raw_data['temp'],          # ключ 'temp' от ESP32
+            temperature=raw_data['temp'],
             soil_moisture=raw_data['soil_moisture'],
             light=raw_data['light'],
             humidity=raw_data.get('humidity'),
             pump_state=raw_data.get('pump_state', False)
         )
-
-        # 6. Получение активного сценария для устройства
+        # Возьмём активный сценарий для устройства
         scenario = self._get_device_scenario(str(sensor_data.device_id))
-
-        # 7. Проверка условий и генерация команд (с уведомлениями)
+        # Проверим условия и сделаем уведомления, если не всё хорошо с условиями
         commands = self._check_conditions(sensor_data, scenario)
-
-        # 8. Сохранение показаний в БД
+        # Сохраним всё в Базу Данных
         self._save_reading(sensor_data)
-
-        # 9. Формирование ответа
+        # Создадим ответ для пользователя после обработки данных
         return {
             "success": True,
             "commands": commands,
@@ -54,12 +43,13 @@ class SensorService:
             "timestamp": datetime.now().isoformat()
         }
 
-    # 10. Приватный метод для получения сценария
-    def _get_device_scenario(self, device_id: str) -> Optional[Scenario]:
+
+    def _get_device_scenario(self, device_id: str) -> Optional[Scenario]: # Функция для получения сценария
+        # Возьмём активный для устройства сценарий
         row = query_db("""
             SELECT 
                 s.iid,
-                s.nam AS plant_name,           -- преобразуем nam в plant_name
+                s.nam AS plant_name,           
                 s.min_temperature, 
                 s.max_temperature,
                 s.min_soil_moisture, 
@@ -69,21 +59,20 @@ class SensorService:
                 s.min_light_lux, 
                 s.max_light_lux,
                 s.created_by
-            FROM scenarios s
+            FROM scenarios AS s
             INNER JOIN user_scenarios AS us ON s.iid = us.scenario_id
             WHERE us.device_id = ? AND us.is_active = 1
             ORDER BY us.created_at DESC
             LIMIT 1
         """, [device_id], one=True)
+        # Если в переменной что-то есть, значит, сценарий нашёлся, и его можно вывести (если нет, значит, ничего не выводим)
         if row:
             return Scenario(**dict(row))
         return None
 
-    # 11. Приватный метод для сохранения показаний
-    def _save_reading(self, data: DeviceData) -> int:
-        """
-        Сохраняет показания датчиков в базу данных.
-        """
+
+    def _save_reading(self, data: DeviceData) -> int: # Функция для сохранения показаний
+        # Берём данные с датчиков и выводим их
         reading_id = execute_db("""
             INSERT INTO sensor_readings 
             (device_id, temp, soil_moisture, light, humidity, pump_state)
@@ -98,46 +87,43 @@ class SensorService:
         ))
         return reading_id
 
-    # 12. Приватный метод для сохранения уведомлений (исправлен)
-    def _save_notification(self, device_id: str, message: str, type: str):
-        print(f"_save_notification ВЫЗВАН с параметрами: {device_id}, {message}, {type}")
+
+    def _save_notification(self, device_id: str, message: str, type: str): # Метод для сохранения уведомлений
+        # Вставляем уведомление в Базу Данных (если произошла ошибка - так и говорим)
+        print(f"Параметры уведомлений: {device_id}, {message}, {type}")
         try:
             execute_db('''
                 INSERT INTO notifications (device_id, message, type)
                 VALUES (?, ?, ?)
             ''', [device_id, message, type])
-            print("Уведомление успешно сохранено в БД")
+            print("Уведомление успешно сохранено в Базу Данных")
         except Exception as e:
             print(f"Ошибка при сохранении уведомления: {e}")
 
-    # 13. Приватные методы управления целью насоса
-    def _get_pump_target(self, device_id: str) -> Optional[bool]:
+
+    def _get_pump_target(self, device_id: str) -> Optional[bool]: # Функция для просмотра состояния насоса
         return self._pump_targets.get(device_id)
 
-    def _set_pump_target(self, device_id: str, target: bool):
+
+    def _set_pump_target(self, device_id: str, target: bool): # Функция для включения или выключения насоса
         self._pump_targets[device_id] = target
 
-    # 14. Основная логика проверки условий (исправлена: игнорируем неиспользуемые пороги)
+
     def _check_conditions(self, data: DeviceData,
-                          scenario: Optional[Scenario]) -> List[Dict]:
-        """
-        Проверяет условия и генерирует команды + уведомления.
-        Параметры со значением PARAM_UNUSED (1000.0) игнорируются.
-        """
+                          scenario: Optional[Scenario]) -> List[Dict]: # Метод проверки условий
+        # Создаём список (пока пустой) команд для пользователя
         commands = []
+        # Нет сценария - нет команд
         if not scenario:
             return commands
-
-        device_id = data.device_id
-        plant_name = scenario.plant_name # название растения из сценария
-
-        # ----- ВЛАЖНОСТЬ ПОЧВЫ (интеллектуальный полив) -----
+        device_id = data.device_id # ID устройства
+        plant_name = scenario.plant_name # Название растения из сценария
+        # Данные для влажности почвы
         current_soil = data.soil_moisture
         min_soil = scenario.min_soil_moisture
         max_soil = scenario.max_soil_moisture
         pump_target = self._get_pump_target(device_id)
-
-        # Проверяем, что пороги заданы (не равны 1000.0)
+        # Проверяем, что пороги параметров заданы (не равны 1000.0)
         if min_soil != self.PARAM_UNUSED and max_soil != self.PARAM_UNUSED:
             if current_soil < min_soil and pump_target is not True:
                 commands.append({
@@ -150,7 +136,6 @@ class SensorService:
                     f"[{plant_name}] Почва слишком сухая ({current_soil}%), включаю насос",
                     "soil"
                 )
-
             elif current_soil >= max_soil and pump_target is True:
                 commands.append({
                     "command": "pump_off",
@@ -162,8 +147,7 @@ class SensorService:
                     f"[{plant_name}] Почва увлажнена до {current_soil}%, насос выключен",
                     "soil"
                 )
-
-        # ----- ТЕМПЕРАТУРА -----
+        # Также, как и с влажностью почвы, проверяем температуру
         if scenario.min_temperature != self.PARAM_UNUSED and data.temperature < scenario.min_temperature:
             self._save_notification(
                 device_id,
@@ -176,8 +160,7 @@ class SensorService:
                 f"[{plant_name}] Температура слишком высокая: {data.temperature}°C > {scenario.max_temperature}°C",
                 "temperature"
             )
-
-        # ----- ВЛАЖНОСТЬ ВОЗДУХА -----
+        # Также проверяем и влажность воздуха
         if data.humidity is not None:
             if scenario.min_humidity != self.PARAM_UNUSED and data.humidity < scenario.min_humidity:
                 self._save_notification(
@@ -191,8 +174,7 @@ class SensorService:
                     f"[{plant_name}] Влажность воздуха слишком высокая: {data.humidity}% > {scenario.max_humidity}%",
                     "humidity"
                 )
-
-        # ----- ОСВЕЩЁННОСТЬ -----
+        # Также проверяем и освещённость
         if scenario.min_light_lux != self.PARAM_UNUSED and data.light < scenario.min_light_lux:
             self._save_notification(
                 device_id,
@@ -205,5 +187,5 @@ class SensorService:
                 f"[{plant_name}] Освещённость слишком высокая: {data.light} лк > {scenario.max_light_lux} лк",
                 "light"
             )
-
+        # Выводим все уведомления (если они есть)
         return commands
