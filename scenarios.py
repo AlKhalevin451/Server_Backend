@@ -252,10 +252,9 @@ def get_user_scenarios():
 
     try:
         user = query_db(
-            "SELECT iid, username FROM users WHERE username = ?",
+            "SELECT id, username FROM users WHERE username = ?",  # ← только один запрос
             [username], one=True
         )
-
         if not user:
             return jsonify({"success": False, "message": "Пользователь не найден"}), 401
 
