@@ -7,6 +7,53 @@ import datetime # Для создания времени получения да
 from database import query_db, execute_db # Для работы с SQL-запросами
 
 
+from config import Config
+from database import DATABASE
+
+
+def get_user_scenarios():
+    """Получить сценарии пользователя."""
+    username = request.args.get('username') or request.args.get('email')
+
+    if not username:
+        return jsonify({"success": False, "message": "Необходимо указать email"}), 401
+
+    try:
+        user = query_db(
+            "SELECT id, username FROM users WHERE username = ?",
+            [username], one=True
+        )
+
+        if not user:
+            return jsonify({"success": False, "message": "Пользователь не найден"}), 401
+
+        # УДАЛЁН plant_name ИЗ ЗАПРОСА
+        user_scenarios = query_db("""
+            SELECT 
+                us.user_id,
+                us.scenario_id, 
+                us.device_id, 
+                us.is_active, 
+                us.created_at,
+                s.name as scenario_name,
+                s.min_temperature,
+                s.max_temperature,
+                s.min_soil_moisture,
+                s.max_soil_moisture,
+                s.min_humidity,
+                s.max_humidity,
+                s.min_light_lux,
+                s.max_light_lux,
+                s.original_scenario_id,
+                orig.name as original_scenario_name
+            FROM user_scenarios us
+            INNER JOIN scenarios AS s ON us.scenario_id = s.id
+            LEFT OUTER JOIN scenarios AS orig ON s.original_scenario_id = orig.id
+            WHERE us.user_id = ?
+            ORDER BY us.created_at DESC
+        """, [user['id']])
+
+        
 def get_all_scenarios(): # Получает все публичные сценарии.
     # Пробуем получить список сценариев
     try:
@@ -20,30 +67,54 @@ def get_all_scenarios(): # Получает все публичные сцена
         """)
         # Создаём пустой (пока) список сценариев
         result = []
-        for s in scenarios:
+        for us in user_scenarios:
+            # УДАЛЁН plant_name, используем только scenario_name
+            display_name = us['scenario_name']
+
             result.append({
-                "iid": s['iid'],
-                "name": s['nam'],
-                "min_temperature": s['min_temperature'],
-                "max_temperature": s['max_temperature'],
-                "min_soil_moisture": s['min_soil_moisture'],
-                "max_soil_moisture": s['max_soil_moisture'],
-                "min_humidity": s['min_humidity'],
-                "max_humidity": s['max_humidity'],
-                "min_light_lux": s['min_light_lux'],
-                "max_light_lux": s['max_light_lux']
+                "unique_id": f"{us['user_id']}_{us['scenario_id']}_{us['created_at']}",
+                "assignment_id": f"{us['user_id']}_{us['scenario_id']}",
+                "user_id": us['user_id'],
+                "scenario_id": us['scenario_id'],
+                "scenario_name": us['scenario_name'],
+                "display_name": display_name,
+                "device_id": us['device_id'],
+                "is_active": bool(us['is_active']),
+                "created_at": us['created_at'],
+                "min_temperature": us['min_temperature'],
+                "max_temperature": us['max_temperature'],
+                "min_soil_moisture": us['min_soil_moisture'],
+                "max_soil_moisture": us['max_soil_moisture'],
+                "min_humidity": us['min_humidity'],
+                "max_humidity": us['max_humidity'],
+                "min_light_lux": us['min_light_lux'],
+                "max_light_lux": us['max_light_lux'],
+                "original_scenario_id": us['original_scenario_id'],
+                "original_scenario_name": us['original_scenario_name'],
+                "is_copy": us['original_scenario_id'] is not None
             })
         # Выводим список публичных сценариев как JSON-ответ с кодом 200
         return jsonify({
             "success": True,
-            "scenarios": result,
-            "count": len(result)
+            "scenarios_of_user": result,
+            "count": len(result),
+            "user_id": user['id'],
+            "username": user['username']
         }), 200
     # Если произошла какая-то неизвестная ошибка, то так и говорим
     except Exception as e:
         print(f"Error in get_all_scenarios: {str(e)}")
         return jsonify({"success": False, "message": f"Ошибка сервера: {str(e)}"}), 500
 
+    except Exception as e:
+        print(f"Error in get_user_scenarios: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": "Внутренняя ошибка сервера",
+            "message": f"Ошибка: {str(e)}"
+        }), 500
 
 def create_scenario(): # Создаёт новый сценарий для пользователя и автоматически привязать его.
     # Сначала пробуем получить данные из тела запроса (если там ничего нет, то данных нет)

@@ -19,6 +19,14 @@ def fix_database():
         print("Добавлена колонка description")
     except sqlite3.OperationalError as e:
         print(f"Колонка description уже существует или другая ошибка: {e}")
+
+    try:
+        # Добавляем колонку plant_name
+        cursor.execute("ALTER TABLE user_scenarios ADD COLUMN plant_name TEXT DEFAULT NULL")
+        print("✓ Добавлена колонка plant_name")
+    except sqlite3.OperationalError as e:
+        print(f"Колонка plant_name уже существует или другая ошибка: {e}")
+
     # Проверяем структуру таблицы
     cursor.execute("PRAGMA table_info(scenarios)")
     print("\nСтруктура таблицы scenarios:")
