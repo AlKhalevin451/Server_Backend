@@ -252,7 +252,7 @@ def get_user_scenarios():
 
     try:
         user = query_db(
-            "SELECT iid, username FROM users WHERE username = ?",
+            "SELECT id, username FROM users WHERE username = ?",
             [username], one=True
         )
 
@@ -267,8 +267,7 @@ def get_user_scenarios():
                 us.device_id, 
                 us.is_active, 
                 us.created_at,
-                us.plant_name,
-                s.nam as scenario_name,
+                s.name as scenario_name,
                 s.min_temperature,
                 s.max_temperature,
                 s.min_soil_moisture,
@@ -278,30 +277,29 @@ def get_user_scenarios():
                 s.min_light_lux,
                 s.max_light_lux,
                 s.original_scenario_id,
-                orig.nam as original_scenario_name
+                orig.name as original_scenario_name
             FROM user_scenarios us
-            INNER JOIN scenarios AS s ON us.scenario_id = s.iid
-            LEFT OUTER JOIN scenarios AS orig ON s.original_scenario_id = orig.iid
+            INNER JOIN scenarios AS s ON us.scenario_id = s.id
+            LEFT OUTER JOIN scenarios AS orig ON s.original_scenario_id = orig.id
             WHERE us.user_id = ?
             ORDER BY us.created_at DESC
-        """, [user['iid']])
+        """, [user['id']])
 
         result = []
         for us in user_scenarios:
-            # Для отображения используем plant_name (имя растения)
-            display_name = us['plant_name'] if us['plant_name'] and us['plant_name'].strip() else us['scenario_name']
+            # Для отображения используем scenario_name (имя сценария)
+            display_name = us['scenario_name']
 
             # Уникальный идентификатор для каждой привязки
-            unique_id = f"{us['user_id']}_{us['scenario_id']}_{us['plant_name']}_{us['created_at']}"
+            unique_id = f"{us['user_id']}_{us['scenario_id']}_{us['created_at']}"
 
             result.append({
-                "unique_id": unique_id,  # Уникальный ID для каждой записи
+                "unique_id": unique_id,
                 "assignment_id": f"{us['user_id']}_{us['scenario_id']}",
                 "user_id": us['user_id'],
                 "scenario_id": us['scenario_id'],
                 "scenario_name": us['scenario_name'],
-                "plant_name": us['plant_name'],
-                "display_name": display_name,  # Имя для отображения (имя растения)
+                "display_name": display_name,
                 "device_id": us['device_id'],
                 "is_active": bool(us['is_active']),
                 "created_at": us['created_at'],
@@ -322,7 +320,7 @@ def get_user_scenarios():
             "success": True,
             "scenarios_of_user": result,
             "count": len(result),
-            "user_id": user['iid'],
+            "user_id": user['id'],
             "username": user['username']
         }), 200
 
