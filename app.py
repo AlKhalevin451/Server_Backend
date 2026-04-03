@@ -66,6 +66,23 @@ def home():
     }), 200
 
 
+# Добавьте в app.py временный эндпоинт
+@app.route('/fixdb', methods=['GET'])
+def fix_database_route():
+    import sqlite3
+    DATABASE = 'plantcare.db'
+    conn = sqlite3.connect(DATABASE)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("ALTER TABLE user_scenarios ADD COLUMN plant_name TEXT DEFAULT NULL")
+        result = "✅ Колонка plant_name добавлена"
+    except Exception as e:
+        result = f"⚠ Ошибка: {e}"
+    conn.commit()
+    conn.close()
+    return jsonify({"result": result})
+
+
 @app.route('/auth/register', methods=['POST'])
 def register():
     return auth.register_user()
