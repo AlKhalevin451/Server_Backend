@@ -252,7 +252,7 @@ def get_user_scenarios():
 
     try:
         user = query_db(
-            "SELECT id, username FROM users WHERE username = ?",
+            "SELECT iid, username FROM users WHERE username = ?",
             [username], one=True
         )
 
