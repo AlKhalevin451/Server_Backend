@@ -160,7 +160,7 @@ class SensorService: # Класс сервиса обработки данных
                 f"[{plant_name}] Температура слишком высокая: {data.temperature}°C > {scenario.max_temperature}°C",
                 "temperature"
             )
-        # Также делаем и с влажностью воздуха
+        # Также проверяем и влажность воздуха
         if data.humidity is not None:
             if scenario.min_humidity != self.PARAM_UNUSED and data.humidity < scenario.min_humidity:
                 self._save_notification(
@@ -174,7 +174,7 @@ class SensorService: # Класс сервиса обработки данных
                     f"[{plant_name}] Влажность воздуха слишком высокая: {data.humidity}% > {scenario.max_humidity}%",
                     "humidity"
                 )
-        # Также делаем и с освещённостью
+        # Также проверяем и освещённость
         if scenario.min_light_lux != self.PARAM_UNUSED and data.light < scenario.min_light_lux:
             self._save_notification(
                 device_id,
