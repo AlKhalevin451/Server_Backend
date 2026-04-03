@@ -12,68 +12,60 @@ class MQTTService:
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
         self.app = app
-
         self.mqtt_host = "broker.hivemq.com"
         self.mqtt_port = 1883
 
+
     def on_connect(self, client, userdata, flags, rc):
         if rc == 0:
-            print("✅ MQTT подключен")
+            print("MQTT подключен")
             client.subscribe("plantcare/device/+/data")
             client.subscribe("plantcare/device/+/status")
-            print("📡 Подписан на топики: plantcare/device/+/data и plantcare/device/+/status")
+            print("Подписан на топики: plantcare/device/+/data и plantcare/device/+/status")
         else:
-            print(f"❌ Ошибка подключения MQTT, код: {rc}")
+            print(f"Ошибка подключения MQTT, код: {rc}")
 
     def on_message(self, client, userdata, msg):
         try:
             topic = msg.topic
             payload = json.loads(msg.payload.decode())
-            print(f"📨 MQTT получено: {topic} -> {payload}")
-
+            print(f"MQTT получено: {topic} -> {payload}")
             parts = topic.split('/')
             if len(parts) >= 3:
                 device_id = parts[2]
                 msg_type = parts[3] if len(parts) > 3 else "unknown"
-
                 if msg_type == "data":
                     self.process_sensor_data(device_id, payload)
                 elif msg_type == "status":
                     self.process_device_status(device_id, payload)
-
         except Exception as e:
-            print(f"❌ Ошибка обработки MQTT: {e}")
+            print(f"Ошибка обработки MQTT: {e}")
             traceback.print_exc()
-
     def process_sensor_data(self, device_id, data):
         if self.app:
             with self.app.app_context():
                 self._process_sensor_data_in_context(device_id, data)
         else:
-            print("⚠️ Нет контекста приложения Flask")
+            print("Нет контекста приложения Flask")
+
 
     def _process_sensor_data_in_context(self, device_id, data):
         try:
             from devices import latest_sensor_data
-
             # Сохраняем все датчики как есть (динамические ключи)
             sensors = data.get('sensors', {})
-
             # Если sensors пустой, но есть прямые поля, собираем их
             if not sensors:
                 sensors = {}
                 for key in ['light', 'soil', 'temp', 'humidity', 'pump']:
                     if key in data:
                         sensors[key] = data[key]
-
             latest_sensor_data[device_id] = {
                 'timestamp': datetime.utcnow().isoformat(),
                 'sensors': sensors,
                 'pump': sensors.get('pump', False)
             }
-
-            print(f"💾 Данные сохранены для {device_id}: {latest_sensor_data[device_id]}")
-
+            print(f"Данные сохранены для {device_id}: {latest_sensor_data[device_id]}")
             # Опционально: вызвать SensorService
             try:
                 from Sensor_service import SensorService
@@ -87,16 +79,17 @@ class MQTTService:
                     "pump_state": sensors.get('pump', False)
                 }
                 result = sensor_service.process_sensor_data(flat_data)
-                print(f"🤖 Результат обработки: {result}")
+                print(f"Результат обработки: {result}")
                 for cmd in result.get('commands', []):
                     if cmd['command'] in ['pump_on', 'pump_off', 'toggle_pump']:
                         self.send_command(device_id, cmd['command'])
             except Exception as e:
-                print(f"⚠️ Ошибка SensorService: {e}")
+                print(f"Ошибка SensorService: {e}")
 
         except Exception as e:
-            print(f"❌ Ошибка сохранения данных: {e}")
+            print(f"Ошибка сохранения данных: {e}")
             traceback.print_exc()
+
 
     def process_device_status(self, device_id, data):
         try:
@@ -108,11 +101,11 @@ class MQTTService:
                 if 'sensors' not in latest_sensor_data[device_id]:
                     latest_sensor_data[device_id]['sensors'] = {}
                 latest_sensor_data[device_id]['sensors']['pump'] = data['pump_state']
-                print(f"🔄 Статус насоса {device_id}: {data['pump_state']}")
+                print(f"Статус насоса {device_id}: {data['pump_state']}")
             if 'status' in data:
-                print(f"📊 Устройство {device_id}: {data['status']}")
+                print(f"Устройство {device_id}: {data['status']}")
         except Exception as e:
-            print(f"❌ Ошибка статуса: {e}")
+            print(f"Ошибка статуса: {e}")
 
     def send_command(self, device_id, command, command_id=None):
         topic = f"plantcare/device/{device_id}/command"
@@ -121,14 +114,16 @@ class MQTTService:
         command_msg = {"command": command, "command_id": command_id, "timestamp": time.time()}
         result = self.client.publish(topic, json.dumps(command_msg))
         if result.rc == mqtt.MQTT_ERR_SUCCESS:
-            print(f"📤 Команда {command} отправлена на {device_id}")
+            print(f"Команда {command} отправлена на {device_id}")
             return {"success": True, "command_id": command_id}
         else:
-            print(f"❌ Ошибка отправки команды: {result.rc}")
+            print(f"Ошибка отправки команды: {result.rc}")
             return {"success": False, "error": f"MQTT error: {result.rc}"}
+
 
     def start(self, app):
         self.app = app
+
 
         def run():
             try:
@@ -136,13 +131,13 @@ class MQTTService:
                 self.client.connect(self.mqtt_host, self.mqtt_port, 60)
                 self.client.loop_forever()
             except Exception as e:
-                print(f"❌ Ошибка подключения: {e}")
+                print(f"Ошибка подключения: {e}")
                 time.sleep(5)
                 self.start(app)
-
         thread = threading.Thread(target=run)
         thread.daemon = True
         thread.start()
+
 
     def stop(self):
         self.client.loop_stop()

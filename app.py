@@ -2,25 +2,22 @@ from flask import Flask, jsonify, request
 from database import init_db, close_db
 from asgiref.wsgi import WsgiToAsgi
 import os
-
-# Подключаем другие файлы
 import auth
 import scenarios
 import devices
+from mqtt_service import init_mqtt
+
 
 app = Flask(__name__)
-
-# Инициализация MQTT
-from mqtt_service import init_mqtt
 mqtt = init_mqtt(app)
 
 if mqtt:
     devices.set_mqtt_service(mqtt)
-    print("✅ MQTT сервис инициализирован")
+    print("MQTT сервис инициализирован")
 else:
-    print("⚠️ MQTT сервис не инициализирован")
+    print("MQTT сервис не инициализирован")
 
-# Инициализация БД при старте приложения
+
 with app.app_context():
     init_db()
     from config import Config
@@ -29,14 +26,11 @@ with app.app_context():
 
 asgi_app = WsgiToAsgi(app)
 
-# Закрытие соединения после запроса
+
 @app.teardown_appcontext
 def shutdown_session(exception=None):
     close_db()
 
-# -----------------------------------------------------------------
-# МАРШРУТЫ
-# -----------------------------------------------------------------
 
 @app.route('/')
 def home():
@@ -71,31 +65,36 @@ def home():
         }
     }), 200
 
-# Аутентификация
+
 @app.route('/auth/register', methods=['POST'])
 def register():
     return auth.register_user()
+
 
 @app.route('/api/login', methods=['POST'])
 def login():
     return auth.login_user()
 
-# Сценарии
+
 @app.route('/api/scenarios', methods=['GET'])
 def get_scenarios():
     return scenarios.get_all_scenarios()
+
 
 @app.route('/api/scenarios', methods=['POST'])
 def create_scenario():
     return scenarios.create_scenario()
 
+
 @app.route('/api/user/scenarios', methods=['POST'])
 def assign_scenario():
     return scenarios.assign_scenario_to_user()
 
+
 @app.route('/api/user/scenarios', methods=['GET'])
 def get_user_scenarios():
     return scenarios.get_user_scenarios()
+
 
 @app.route('/debug/all-scenarios')
 def debug_all_scenarios():
@@ -107,45 +106,51 @@ def debug_all_scenarios():
         "assignments": [dict(row) for row in all_assignments]
     })
 
-# Устройства (ESP32)
+
 @app.route('/api/device/data', methods=['POST'])
 def device_data():
     return devices.process_sensor_data()
+
 
 @app.route('/api/device/<device_id>/scenario', methods=['GET'])
 def device_scenario(device_id):
     return devices.get_device_scenario(device_id)
 
-# Маршруты для ANDROID
+
 @app.route('/api/device/<device_id>/data', methods=['GET'])
 def get_device_data(device_id):
     return devices.get_device_data(device_id)
+
 
 @app.route('/api/device/<device_id>/pump/toggle', methods=['POST'])
 def toggle_pump(device_id):
     return devices.toggle_pump(device_id)
 
+
 @app.route('/api/device/<device_id>/pump/on', methods=['POST'])
 def pump_on(device_id):
     return devices.pump_on(device_id)
+
 
 @app.route('/api/device/<device_id>/pump/off', methods=['POST'])
 def pump_off(device_id):
     return devices.pump_off(device_id)
 
+
 @app.route('/api/device/<device_id>/pump/status', methods=['GET'])
 def pump_status(device_id):
     return devices.get_pump_status(device_id)
 
+
 @app.route('/api/device/<device_id>/notifications', methods=['GET'])
 def get_notifications(device_id):
-    """Android получает уведомления (упрощено - только данные)"""
     return devices.get_notifications(device_id)
 
-# Системные маршруты
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
     return jsonify({"status": "healthy", "database": "connected", "mqtt": mqtt is not None}), 200
+
 
 @app.route('/api/info', methods=['GET'])
 def server_info():
@@ -155,24 +160,27 @@ def server_info():
         "api_version": "v1"
     }), 200
 
-# Обработчики ошибок
+
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({"success": False, "error": "Ресурс не найден"}), 404
+
 
 @app.errorhandler(400)
 def bad_request(error):
     return jsonify({"success": False, "error": "Некорректный запрос"}), 400
 
+
 @app.errorhandler(401)
 def unauthorized(error):
     return jsonify({"success": False, "error": "Неавторизован"}), 401
+
 
 @app.errorhandler(500)
 def internal_error(error):
     return jsonify({"success": False, "error": "Внутренняя ошибка сервера"}), 500
 
-# Запуск
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
