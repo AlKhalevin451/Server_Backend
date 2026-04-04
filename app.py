@@ -200,7 +200,7 @@ def internal_error(error):
 
 @app.route('/api/user/scenarios/delete', methods=['POST'])
 def delete_user_scenario():
-    """Удалить сценарий пользователя"""
+    """Удалить привязку сценария к пользователю"""
     data = request.get_json()
     username = data.get('username')
     scenario_name = data.get('scenario_name')
@@ -209,15 +209,21 @@ def delete_user_scenario():
         return jsonify({"success": False, "message": "Не указаны username или scenario_name"}), 400
 
     try:
-        user = scenarios.query_db("SELECT id FROM users WHERE username = ?", [username], one=True)
+        # Находим пользователя
+        user = query_db("SELECT id FROM users WHERE username = ?", [username], one=True)
         if not user:
             return jsonify({"success": False, "message": "Пользователь не найден"}), 404
 
-        # Удаляем привязку сценария к пользователю
-        scenarios.execute_db("""
+        # Находим сценарий
+        scenario = query_db("SELECT id FROM scenarios WHERE name = ?", [scenario_name], one=True)
+        if not scenario:
+            return jsonify({"success": False, "message": "Сценарий не найден"}), 404
+
+        # Удаляем привязку
+        execute_db("""
             DELETE FROM user_scenarios 
-            WHERE user_id = ? AND scenario_id IN (SELECT iid FROM scenarios WHERE name = ?)
-        """, (user['id'], scenario_name))
+            WHERE user_id = ? AND scenario_id = ?
+        """, (user['id'], scenario['id']))
 
         return jsonify({"success": True, "message": "Сценарий удален"}), 200
 
