@@ -75,9 +75,9 @@ def fix_database_route():
     cursor = conn.cursor()
     try:
         cursor.execute("ALTER TABLE user_scenarios ADD COLUMN plant_name TEXT DEFAULT NULL")
-        result = "✅ Колонка plant_name добавлена"
+        result = "Колонка plant_name добавлена"
     except Exception as e:
-        result = f"⚠ Ошибка: {e}"
+        result = f"Ошибка: {e}"
     conn.commit()
     conn.close()
     return jsonify({"result": result})
