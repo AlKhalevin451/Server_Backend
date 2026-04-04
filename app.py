@@ -75,9 +75,9 @@ def fix_database_route():
     cursor = conn.cursor()
     try:
         cursor.execute("ALTER TABLE user_scenarios ADD COLUMN plant_name TEXT DEFAULT NULL")
-        result = "Колонка plant_name добавлена"
+        result = "✅ Колонка plant_name добавлена"
     except Exception as e:
-        result = f"Ошибка: {e}"
+        result = f"⚠ Ошибка: {e}"
     conn.commit()
     conn.close()
     return jsonify({"result": result})
@@ -197,39 +197,6 @@ def unauthorized(error):
 def internal_error(error):
     return jsonify({"success": False, "error": "Внутренняя ошибка сервера"}), 500
 
-
-@app.route('/api/user/scenarios/delete', methods=['POST'])
-def delete_user_scenario():
-    """Удалить привязку сценария к пользователю"""
-    data = request.get_json()
-    username = data.get('username')
-    scenario_name = data.get('scenario_name')
-
-    if not username or not scenario_name:
-        return jsonify({"success": False, "message": "Не указаны username или scenario_name"}), 400
-
-    try:
-        # Находим пользователя
-        user = scenarios.query_db("SELECT iid FROM users WHERE username = ?", [username], one=True)
-        if not user:
-            return jsonify({"success": False, "message": "Пользователь не найден"}), 404
-
-        # Находим сценарий
-        scenario = scenarios.query_db("SELECT iid FROM scenarios WHERE name = ?", [scenario_name], one=True)
-        if not scenario:
-            return jsonify({"success": False, "message": "Сценарий не найден"}), 404
-
-        # Удаляем привязку
-        scenarios.execute_db("""
-            DELETE FROM user_scenarios 
-            WHERE user_id = ? AND scenario_id = ?
-        """, (user['iid'], scenario['iid']))
-
-        return jsonify({"success": True, "message": "Сценарий удален"}), 200
-
-    except Exception as e:
-        print(f"Error deleting scenario: {e}")
-        return jsonify({"success": False, "message": str(e)}), 500
 
 
 if __name__ == '__main__':
