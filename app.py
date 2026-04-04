@@ -75,9 +75,9 @@ def fix_database_route():
     cursor = conn.cursor()
     try:
         cursor.execute("ALTER TABLE user_scenarios ADD COLUMN plant_name TEXT DEFAULT NULL")
-        result = "✅ Колонка plant_name добавлена"
+        result = "Колонка plant_name добавлена"
     except Exception as e:
-        result = f"⚠ Ошибка: {e}"
+        result = f"Ошибка: {e}"
     conn.commit()
     conn.close()
     return jsonify({"result": result})
@@ -210,20 +210,20 @@ def delete_user_scenario():
 
     try:
         # Находим пользователя
-        user = query_db("SELECT id FROM users WHERE username = ?", [username], one=True)
+        user = scenarios.query_db("SELECT iid FROM users WHERE username = ?", [username], one=True)
         if not user:
             return jsonify({"success": False, "message": "Пользователь не найден"}), 404
 
         # Находим сценарий
-        scenario = query_db("SELECT id FROM scenarios WHERE name = ?", [scenario_name], one=True)
+        scenario = scenarios.query_db("SELECT iid FROM scenarios WHERE name = ?", [scenario_name], one=True)
         if not scenario:
             return jsonify({"success": False, "message": "Сценарий не найден"}), 404
 
         # Удаляем привязку
-        execute_db("""
+        scenarios.execute_db("""
             DELETE FROM user_scenarios 
             WHERE user_id = ? AND scenario_id = ?
-        """, (user['id'], scenario['id']))
+        """, (user['iid'], scenario['iid']))
 
         return jsonify({"success": True, "message": "Сценарий удален"}), 200
 
