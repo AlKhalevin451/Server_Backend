@@ -198,6 +198,34 @@ def internal_error(error):
     return jsonify({"success": False, "error": "Внутренняя ошибка сервера"}), 500
 
 
+@app.route('/api/user/scenarios/delete', methods=['POST'])
+def delete_user_scenario():
+    """Удалить сценарий пользователя"""
+    data = request.get_json()
+    username = data.get('username')
+    scenario_name = data.get('scenario_name')
+
+    if not username or not scenario_name:
+        return jsonify({"success": False, "message": "Не указаны username или scenario_name"}), 400
+
+    try:
+        user = scenarios.query_db("SELECT id FROM users WHERE username = ?", [username], one=True)
+        if not user:
+            return jsonify({"success": False, "message": "Пользователь не найден"}), 404
+
+        # Удаляем привязку сценария к пользователю
+        scenarios.execute_db("""
+            DELETE FROM user_scenarios 
+            WHERE user_id = ? AND scenario_id IN (SELECT iid FROM scenarios WHERE name = ?)
+        """, (user['id'], scenario_name))
+
+        return jsonify({"success": True, "message": "Сценарий удален"}), 200
+
+    except Exception as e:
+        print(f"Error deleting scenario: {e}")
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
